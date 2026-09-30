@@ -1,0 +1,1519 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Gestión Administrativo | Agencia de Viajes</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="icon" type="image/png" href="/static/img/logo.png">
+    <link rel="apple-touch-icon" href="/static/img/logo.png">
+</head>
+<body class="bg-slate-50 min-h-screen flex text-slate-800">
+
+    <!-- Pantalla de acceso; se oculta después de validar las credenciales -->
+    <div id="login-screen" class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950">
+        <div class="absolute inset-0 overflow-hidden pointer-events-none">
+            <div class="absolute -top-24 -right-20 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl"></div>
+            <div class="absolute -bottom-28 -left-20 w-96 h-96 bg-cyan-400/10 rounded-full blur-3xl"></div>
+        </div>
+        <div class="relative w-full max-w-md bg-white rounded-3xl shadow-2xl p-8 sm:p-10">
+            <div class="flex flex-col items-center text-center mb-8">
+                <div class="w-20 h-20 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center mb-4 shadow-sm">
+                    <img src="/static/img/logo.png" alt="Logo Plaza Bohemia Viajes" class="w-16 h-16 object-contain">
+                </div>
+                <h1 class="text-2xl font-bold text-slate-900">Plaza Bohemia</h1>
+                <p class="text-sm text-slate-500 mt-1">Viajes & Turismo · Sistema administrativo</p>
+            </div>
+            <div class="mb-6">
+                <h2 class="text-lg font-bold text-slate-900">Iniciar sesión</h2>
+                <p class="text-sm text-slate-500 mt-1">Ingrese sus credenciales para continuar.</p>
+            </div>
+            <form id="login-form" onsubmit="loginUser(event)" class="space-y-5">
+                <div>
+                    <label for="login-username" class="block text-sm font-semibold text-slate-700 mb-1.5">Usuario</label>
+                    <input id="login-username" name="username" type="text" autocomplete="username" required class="w-full px-4 py-3 border border-slate-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Nombre de usuario">
+                </div>
+                <div>
+                    <label for="login-password" class="block text-sm font-semibold text-slate-700 mb-1.5">Contraseña</label>
+                    <input id="login-password" name="password" type="password" autocomplete="current-password" required class="w-full px-4 py-3 border border-slate-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Contraseña">
+                </div>
+                <p id="login-error" role="alert" class="hidden text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2"></p>
+                <button id="login-submit" type="submit" class="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-wait text-white font-semibold py-3 rounded-xl shadow-lg shadow-blue-600/20 transition">
+                    <i data-lucide="log-in" class="w-4 h-4"></i> Ingresar al sistema
+                </button>
+            </form>
+            <p class="text-center text-xs text-slate-400 mt-7">Acceso seguro para el equipo de Plaza Bohemia</p>
+        </div>
+    </div>
+
+    <!-- Sidebar -->
+    <aside class="w-64 sidebar flex flex-col shrink-0 shadow-xl min-h-screen">
+        <div class="p-6 border-b border-slate-800 flex items-center gap-3">
+            <img src="/static/img/logo.png" alt="Plaza Bohemia Viajes Logo" class="w-11 h-11 object-contain drop-shadow">
+            <div>
+                <h1 class="font-bold text-base leading-tight text-white">Plaza Bohemia</h1>
+                <p class="text-xs text-slate-400 font-medium">Viajes & Turismo</p>
+            </div>
+        </div>
+
+        <nav class="flex-1 p-4 space-y-1 overflow-y-auto">
+            <button onclick="switchTab('dashboard')" id="nav-dashboard" class="w-full flex items-center gap-3 px-4 py-3 text-sm font-semibold rounded-xl text-slate-300 hover:bg-slate-800/80 hover:text-white transition">
+                <i data-lucide="layout-dashboard" class="w-5 h-5"></i> Dashboard
+            </button>
+
+            <button onclick="switchTab('budgets')" id="nav-budgets" class="w-full flex items-center gap-3 px-4 py-3 text-sm font-semibold rounded-xl text-slate-300 hover:bg-slate-800/80 hover:text-white transition">
+                <i data-lucide="file-text" class="w-5 h-5"></i> Presupuestos
+            </button>
+
+            <button onclick="switchTab('bookings')" id="nav-bookings" class="w-full flex items-center gap-3 px-4 py-3 text-sm font-semibold rounded-xl text-slate-300 hover:bg-slate-800/80 hover:text-white transition">
+                <i data-lucide="briefcase" class="w-5 h-5"></i> Reservas y Pagos
+            </button>
+
+            <button onclick="switchTab('payments')" id="nav-payments" class="w-full flex items-center gap-3 px-4 py-3 text-sm font-semibold rounded-xl text-slate-300 hover:bg-slate-800/80 hover:text-white transition">
+                <i data-lucide="receipt" class="w-5 h-5"></i> Historial de Pagos
+            </button>
+
+            <button onclick="switchTab('clients')" id="nav-clients" class="w-full flex items-center gap-3 px-4 py-3 text-sm font-semibold rounded-xl text-slate-300 hover:bg-slate-800/80 hover:text-white transition">
+                <i data-lucide="users" class="w-5 h-5"></i> Clientes
+            </button>
+
+            <button onclick="switchTab('suppliers')" id="nav-suppliers" class="w-full flex items-center gap-3 px-4 py-3 text-sm font-semibold rounded-xl text-slate-300 hover:bg-slate-800/80 hover:text-white transition">
+                <i data-lucide="building-2" class="w-5 h-5"></i> Proveedores
+            </button>
+
+            <div id="nav-admin-section" class="pt-4 mt-4 border-t border-slate-800">
+                <p class="px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Administración</p>
+                <button onclick="switchTab('supplier-payables')" id="nav-supplier-payables" class="w-full flex items-center gap-3 px-4 py-3 text-sm font-semibold rounded-xl text-slate-300 hover:bg-slate-800/80 hover:text-white transition">
+                    <i data-lucide="receipt" class="w-5 h-5"></i> Pagos a Proveedores
+                </button>
+                <button onclick="switchTab('profits')" id="nav-profits" class="w-full flex items-center gap-3 px-4 py-3 text-sm font-semibold rounded-xl text-slate-300 hover:bg-slate-800/80 hover:text-white transition">
+                    <i data-lucide="trending-up" class="w-5 h-5"></i> Ganancias y Comisiones
+                </button>
+                <button onclick="switchTab('user-earnings')" id="nav-user-earnings" class="w-full flex items-center gap-3 px-4 py-3 text-sm font-semibold rounded-xl text-slate-300 hover:bg-slate-800/80 hover:text-white transition">
+                    <i data-lucide="chart-no-axes-combined" class="w-5 h-5"></i> Ganancias por Usuario
+                </button>
+                <button onclick="switchTab('audit')" id="nav-audit" class="w-full flex items-center gap-3 px-4 py-3 text-sm font-semibold rounded-xl text-slate-300 hover:bg-slate-800/80 hover:text-white transition">
+                    <i data-lucide="history" class="w-5 h-5"></i> Log de Actividad
+                </button>
+                <button onclick="switchTab('users')" id="nav-users" class="w-full flex items-center gap-3 px-4 py-3 text-sm font-semibold rounded-xl text-slate-300 hover:bg-slate-800/80 hover:text-white transition">
+                    <i data-lucide="shield-check" class="w-5 h-5"></i> Usuarios y Roles
+                </button>
+            </div>
+        </nav>
+
+        <div class="p-4 border-t border-slate-800 bg-slate-900/50">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-full bg-blue-600/20 text-blue-400 font-bold flex items-center justify-center border border-blue-500/30" id="user-avatar">
+                        A
+                    </div>
+                    <div class="overflow-hidden">
+                        <p class="text-sm font-semibold text-white truncate" id="user-display-name">Administrador</p>
+                        <p class="text-xs text-slate-400 capitalize truncate" id="user-display-role">admin</p>
+                    </div>
+                </div>
+                <button onclick="logout()" class="text-slate-400 hover:text-red-400 p-1.5 rounded-lg hover:bg-slate-800 transition" title="Cerrar sesión">
+                    <i data-lucide="log-out" class="w-5 h-5"></i>
+                </button>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="flex-1 flex flex-col min-w-0 overflow-y-auto">
+        <!-- Topbar -->
+        <header class="bg-white border-b border-slate-200 px-8 py-4 flex items-center justify-between sticky top-0 z-10 shadow-sm">
+            <div>
+                <h2 id="page-title" class="text-2xl font-bold text-slate-900">Dashboard</h2>
+                <p class="text-xs text-slate-500">Resumen operativo y financiero de la agencia</p>
+            </div>
+            <div class="flex items-center gap-4">
+                <div class="text-right">
+                    <span id="current-date-display" class="text-xs font-semibold text-slate-500"></span>
+                </div>
+            </div>
+        </header>
+
+        <!-- View Containers -->
+        <div class="p-8 flex-1">
+
+            <!-- DASHBOARD VIEW -->
+            <section id="view-dashboard" class="space-y-8">
+                <label class="relative block max-w-md">
+                    <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
+                    <input type="search" oninput="filterSectionRows('view-dashboard', this.value)" placeholder="Buscar en pagos recientes..." aria-label="Buscar en dashboard" class="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500">
+                </label>
+                <!-- KPI Cards -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition">
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="text-sm font-semibold text-slate-500">Ventas Totales</span>
+                            <div class="p-2.5 bg-blue-50 text-blue-600 rounded-xl">
+                                <i data-lucide="circle-dollar-sign" class="w-5 h-5"></i>
+                            </div>
+                        </div>
+                        <h3 class="text-2xl font-bold text-slate-900" id="dash-total-sales">$0.00</h3>
+                        <p class="text-xs text-slate-400 mt-1">Monto total reservado</p>
+                    </div>
+
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition">
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="text-sm font-semibold text-slate-500">Cobrado (Pagos)</span>
+                            <div class="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl">
+                                <i data-lucide="trending-up" class="w-5 h-5"></i>
+                            </div>
+                        </div>
+                        <h3 class="text-2xl font-bold text-emerald-600" id="dash-total-collected">$0.00</h3>
+                        <p class="text-xs text-emerald-600/80 mt-1">Total ingresado a caja</p>
+                    </div>
+
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition">
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="text-sm font-semibold text-slate-500">Saldo por Cobrar</span>
+                            <div class="p-2.5 bg-amber-50 text-amber-600 rounded-xl">
+                                <i data-lucide="clock" class="w-5 h-5"></i>
+                            </div>
+                        </div>
+                        <h3 class="text-2xl font-bold text-amber-600" id="dash-total-pending">$0.00</h3>
+                        <p class="text-xs text-amber-600/80 mt-1">Pagos parciales pendientes</p>
+                    </div>
+
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition">
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="text-sm font-semibold text-slate-500">Reservas Activas</span>
+                            <div class="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl">
+                                <i data-lucide="luggage" class="w-5 h-5"></i>
+                            </div>
+                        </div>
+                        <h3 class="text-2xl font-bold text-slate-900" id="dash-total-bookings">0</h3>
+                        <p class="text-xs text-slate-400 mt-1">Expedientes de viaje activos</p>
+                    </div>
+
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition">
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="text-sm font-semibold text-slate-500">Cobrado este mes</span>
+                            <div class="p-2.5 bg-cyan-50 text-cyan-600 rounded-xl"><i data-lucide="calendar-check" class="w-5 h-5"></i></div>
+                        </div>
+                        <h3 class="text-2xl font-bold text-cyan-700" id="dash-month-collected">$0.00</h3>
+                        <p class="text-xs text-slate-400 mt-1">Ingresos del mes calendario</p>
+                    </div>
+
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition">
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="text-sm font-semibold text-slate-500">Tasa de cobro</span>
+                            <div class="p-2.5 bg-violet-50 text-violet-600 rounded-xl"><i data-lucide="percent" class="w-5 h-5"></i></div>
+                        </div>
+                        <h3 class="text-2xl font-bold text-violet-700" id="dash-collection-rate">0%</h3>
+                        <p class="text-xs text-slate-400 mt-1">Cobrado respecto a ventas</p>
+                    </div>
+
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition">
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="text-sm font-semibold text-slate-500">Reservas con saldo</span>
+                            <div class="p-2.5 bg-rose-50 text-rose-600 rounded-xl"><i data-lucide="wallet" class="w-5 h-5"></i></div>
+                        </div>
+                        <h3 class="text-2xl font-bold text-rose-700" id="dash-bookings-with-balance">0</h3>
+                        <p class="text-xs text-slate-400 mt-1">Operaciones con importe pendiente</p>
+                    </div>
+
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition">
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="text-sm font-semibold text-slate-500">Proveedores</span>
+                            <div class="p-2.5 bg-amber-50 text-amber-600 rounded-xl"><i data-lucide="building-2" class="w-5 h-5"></i></div>
+                        </div>
+                        <h3 class="text-2xl font-bold text-amber-700" id="dash-total-suppliers">0</h3>
+                        <p class="text-xs text-slate-400 mt-1">Proveedores registrados</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                    <div class="xl:col-span-2 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                        <div class="flex items-start justify-between gap-3 mb-4">
+                            <div><h3 class="font-bold text-slate-900">Ingresos mensuales</h3><p class="text-xs text-slate-500 mt-1">Pagos recibidos durante los últimos seis meses</p></div>
+                            <span class="text-xs text-slate-400" id="dash-chart-currency-label">Moneda de operación</span>
+                        </div>
+                        <div id="dashboard-monthly-chart" class="h-56 flex items-end gap-3 overflow-x-auto border-b border-slate-200 pb-2"><p class="text-sm text-slate-400">Cargando gráfico...</p></div>
+                    </div>
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                        <h3 class="font-bold text-slate-900">Reservas por estado</h3>
+                        <p class="text-xs text-slate-500 mt-1">Distribución de expedientes</p>
+                        <div id="dashboard-status-chart" class="mt-5 space-y-4"><p class="text-sm text-slate-400">Cargando estados...</p></div>
+                    </div>
+                </div>
+
+                <!-- Recent Payments & Quick Overview -->
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    <div class="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <h3 class="font-bold text-slate-900 text-lg">Últimos Pagos Registrados</h3>
+                                <p class="text-xs text-slate-500">Ingresos recientes por señas y pagos totales</p>
+                            </div>
+                            <button onclick="switchTab('bookings')" class="text-xs text-blue-600 font-semibold hover:underline">Ver todas las reservas &rarr;</button>
+                        </div>
+                        <div class="table-container">
+                            <table class="w-full text-left text-sm text-slate-600">
+                                <thead class="bg-slate-50 text-slate-700 font-semibold border-b border-slate-200">
+                                    <tr>
+                                        <th class="p-3">Nº Pago</th>
+                                        <th class="p-3">Cliente</th>
+                                        <th class="p-3">Monto</th>
+                                        <th class="p-3">Fecha</th>
+                                        <th class="p-3">Tipo</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="dash-recent-payments-body">
+                                    <tr><td colspan="5" class="p-4 text-center text-slate-400">Cargando pagos...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                        <h3 class="font-bold text-slate-900 text-lg">Estado de Presupuestos</h3>
+                        <div class="space-y-4">
+                            <div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
+                                <span class="text-sm font-medium text-slate-600">Total Cotizaciones</span>
+                                <span class="font-bold text-slate-900 text-lg" id="dash-total-budgets">0</span>
+                            </div>
+                            <div class="flex items-center justify-between p-3 bg-emerald-50 rounded-xl">
+                                <span class="text-sm font-medium text-emerald-800">Aprobados / Convertidos</span>
+                                <span class="font-bold text-emerald-700 text-lg" id="dash-approved-budgets">0</span>
+                            </div>
+                            <div class="flex items-center justify-between p-3 bg-blue-50 rounded-xl">
+                                <span class="text-sm font-medium text-blue-800">Clientes Registrados</span>
+                                <span class="font-bold text-blue-700 text-lg" id="dash-total-clients">0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- PRESUPUESTOS VIEW -->
+            <section id="view-budgets" class="hidden space-y-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h3 class="text-xl font-bold text-slate-900">Gestión de Presupuestos / Cotizaciones</h3>
+                        <p class="text-xs text-slate-500">Cree cotizaciones multilínea y conviértalas a reservas activas</p>
+                    </div>
+                    <button onclick="openNewBudgetModal()" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2.5 rounded-xl flex items-center gap-2 text-sm shadow-md transition">
+                        <i data-lucide="plus" class="w-4 h-4"></i> Nuevo Presupuesto
+                    </button>
+                </div>
+
+                <label class="relative block max-w-md">
+                    <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
+                    <input type="search" oninput="filterSectionRows('view-budgets', this.value)" placeholder="Buscar presupuesto, cliente, destino o estado..." aria-label="Buscar presupuestos" class="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500">
+                </label>
+
+                <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="table-container">
+                        <table class="w-full text-left text-sm text-slate-600">
+                            <thead class="bg-slate-50 text-slate-700 font-semibold border-b border-slate-200">
+                                <tr>
+                                    <th class="p-4">Nº Presupuesto</th>
+                                    <th class="p-4">Cliente</th>
+                                    <th class="p-4">Destino / Título</th>
+                                    <th class="p-4">Fechas</th>
+                                    <th class="p-4">Total</th>
+                                    <th class="p-4">Estado</th>
+                                    <th class="p-4 text-right">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="budgets-table-body">
+                                <tr><td colspan="7" class="p-4 text-center text-slate-400">Cargando presupuestos...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- RESERVAS Y PAGOS VIEW -->
+            <section id="view-bookings" class="hidden space-y-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h3 class="text-xl font-bold text-slate-900">Expedientes de Viaje y Control de Pagos</h3>
+                        <p class="text-xs text-slate-500">Administre reservas de clientes, pagos parciales y saldos pendientes</p>
+                    </div>
+                    <button type="button" onclick="toggleSalesPayments()" class="bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold px-4 py-2.5 rounded-xl flex items-center gap-2 text-sm border border-blue-200 transition">
+                        <i data-lucide="receipt-text" class="w-4 h-4"></i> Ver todos los pagos
+                    </button>
+                </div>
+
+                <label class="relative block max-w-md">
+                    <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
+                    <input type="search" oninput="filterSectionRows('view-bookings', this.value)" placeholder="Buscar reserva, cliente o pago..." aria-label="Buscar ventas y reservas" class="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500">
+                </label>
+
+                <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="table-container">
+                        <table class="w-full text-left text-sm text-slate-600">
+                            <thead class="bg-slate-50 text-slate-700 font-semibold border-b border-slate-200">
+                                <tr>
+                                    <th class="p-4">Nº Reserva</th>
+                                    <th class="p-4">Cliente</th>
+                                    <th class="p-4">Destino</th>
+                                    <th class="p-4">Monto Total</th>
+                                    <th class="p-4">Cobrado</th>
+                                    <th class="p-4">Saldo Pendiente</th>
+                                    <th class="p-4">Estado</th>
+                                    <th class="p-4 text-right">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="bookings-table-body">
+                                <tr><td colspan="8" class="p-4 text-center text-slate-400">Cargando reservas...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="sales-payments-panel" class="hidden bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="p-5 border-b border-slate-200">
+                        <h3 class="text-base font-bold text-slate-900">Detalle de todos los pagos registrados</h3>
+                        <p class="text-xs text-slate-500 mt-0.5">Pagos parciales y totales recibidos en todas las reservas, con método, referencia y responsable.</p>
+                    </div>
+                    <div class="table-container">
+                        <table class="w-full min-w-[1050px] text-left text-sm text-slate-600">
+                            <thead class="bg-slate-50 text-slate-700 font-semibold border-b border-slate-200">
+                                <tr>
+                                    <th class="p-4">Nº Pago</th>
+                                    <th class="p-4">Reserva / Cliente</th>
+                                    <th class="p-4">Fecha y hora</th>
+                                    <th class="p-4 text-right">Monto</th>
+                                    <th class="p-4">Método / Tipo</th>
+                                    <th class="p-4">Referencia / Observaciones</th>
+                                    <th class="p-4">Registrado por</th>
+                                    <th class="p-4 text-right">Comprobante</th>
+                                </tr>
+                            </thead>
+                            <tbody id="sales-payments-table-body">
+                                <tr><td colspan="8" class="p-4 text-center text-slate-400">Cargando pagos...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- HISTORIAL DE PAGOS VIEW -->
+            <section id="view-payments" class="hidden space-y-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h3 class="text-xl font-bold text-slate-900">Historial General de Pagos Parciales y Totales</h3>
+                        <p class="text-xs text-slate-500">Registro detallado con fecha, hora, monto, método de pago y agente emisor</p>
+                    </div>
+                </div>
+
+                <label class="relative block max-w-md">
+                    <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
+                    <input type="search" oninput="filterSectionRows('view-payments', this.value)" placeholder="Buscar pago, reserva, cliente, método..." aria-label="Buscar historial de pagos" class="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500">
+                </label>
+
+                <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="table-container">
+                        <table class="w-full text-left text-sm text-slate-600">
+                            <thead class="bg-slate-50 text-slate-700 font-semibold border-b border-slate-200">
+                                <tr>
+                                    <th class="p-4">Nº Pago</th>
+                                    <th class="p-4">Reserva / Cliente</th>
+                                    <th class="p-4">Fecha de Pago</th>
+                                    <th class="p-4">Hora Registro</th>
+                                    <th class="p-4">Monto</th>
+                                    <th class="p-4">Método</th>
+                                    <th class="p-4">Tipo</th>
+                                    <th class="p-4">Referencia / Observaciones</th>
+                                    <th class="p-4">Registrado Por</th>
+                                    <th class="p-4 text-right">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="payments-table-body">
+                                <tr><td colspan="10" class="p-4 text-center text-slate-400">Cargando historial de pagos...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- CLIENTES VIEW -->
+            <section id="view-clients" class="hidden space-y-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h3 class="text-xl font-bold text-slate-900">Directorio de Clientes / Pasajeros</h3>
+                        <p class="text-xs text-slate-500">Información de contacto y documentos de pasaporte / DNI</p>
+                    </div>
+                    <button onclick="openClientModal()" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2.5 rounded-xl flex items-center gap-2 text-sm shadow-md transition">
+                        <i data-lucide="user-plus" class="w-4 h-4"></i> Nuevo Cliente
+                    </button>
+                </div>
+
+                <label class="relative block max-w-md">
+                    <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
+                    <input type="search" oninput="filterSectionRows('view-clients', this.value)" placeholder="Buscar cliente, documento, email o teléfono..." aria-label="Buscar clientes" class="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500">
+                </label>
+
+                <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="table-container">
+                        <table class="w-full text-left text-sm text-slate-600">
+                            <thead class="bg-slate-50 text-slate-700 font-semibold border-b border-slate-200">
+                                <tr>
+                                    <th class="p-4">Nombre / Razón Social</th>
+                                    <th class="p-4">Documento / DNI</th>
+                                    <th class="p-4">Email</th>
+                                    <th class="p-4">Teléfono</th>
+                                    <th class="p-4">Notas</th>
+                                    <th class="p-4 text-right">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="clients-table-body">
+                                <tr><td colspan="6" class="p-4 text-center text-slate-400">Cargando clientes...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- PROVEEDORES VIEW -->
+            <section id="view-suppliers" class="hidden space-y-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h3 class="text-xl font-bold text-slate-900">Catálogo de Proveedores</h3>
+                        <p class="text-xs text-slate-500">Hoteles, Aerolíneas, Operadores Mayoristas y Seguros</p>
+                    </div>
+                    <button onclick="openSupplierModal()" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2.5 rounded-xl flex items-center gap-2 text-sm shadow-md transition">
+                        <i data-lucide="plus" class="w-4 h-4"></i> Nuevo Proveedor
+                    </button>
+                </div>
+
+                <label class="relative block max-w-md">
+                    <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
+                    <input type="search" oninput="filterSectionRows('view-suppliers', this.value)" placeholder="Buscar proveedor, categoría o contacto..." aria-label="Buscar proveedores" class="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500">
+                </label>
+
+                <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="table-container">
+                        <table class="w-full text-left text-sm text-slate-600">
+                            <thead class="bg-slate-50 text-slate-700 font-semibold border-b border-slate-200">
+                                <tr>
+                                    <th class="p-4">Proveedor</th>
+                                    <th class="p-4">Categoría</th>
+                                    <th class="p-4">Contacto</th>
+                                    <th class="p-4">Teléfono / Email</th>
+                                    <th class="p-4 text-right">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="suppliers-table-body">
+                                <tr><td colspan="5" class="p-4 text-center text-slate-400">Cargando proveedores...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- USUARIOS VIEW -->
+            <section id="view-users" class="hidden space-y-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h3 class="text-xl font-bold text-slate-900">Administración de Usuarios y Roles</h3>
+                        <p class="text-xs text-slate-500">Gestione accesos, agentes de ventas y permisos de administración</p>
+                    </div>
+                    <button onclick="openUserModal()" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2.5 rounded-xl flex items-center gap-2 text-sm shadow-md transition">
+                        <i data-lucide="shield-plus" class="w-4 h-4"></i> Nuevo Usuario
+                    </button>
+                </div>
+
+                <label class="relative block max-w-md">
+                    <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
+                    <input type="search" oninput="filterSectionRows('view-users', this.value)" placeholder="Buscar usuario, nombre, email o rol..." aria-label="Buscar usuarios" class="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500">
+                </label>
+
+                <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="table-container">
+                        <table class="w-full text-left text-sm text-slate-600">
+                            <thead class="bg-slate-50 text-slate-700 font-semibold border-b border-slate-200">
+                                <tr>
+                                    <th class="p-4">Usuario</th>
+                                    <th class="p-4">Nombre Completo</th>
+                                    <th class="p-4">Email</th>
+                                    <th class="p-4">Rol</th>
+                                    <th class="p-4">Estado</th>
+                                    <th class="p-4 text-right">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="users-table-body">
+                                <tr><td colspan="6" class="p-4 text-center text-slate-400">Cargando usuarios...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- PAGOS A PROVEEDORES -->
+            <section id="view-supplier-payables" class="hidden space-y-6">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                        <h3 class="text-xl font-bold text-slate-900">Pagos a Proveedores</h3>
+                        <p class="text-xs text-slate-500">Control de facturas, pagos parciales y próximos vencimientos.</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button onclick="loadSupplierPayables()" class="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-xl border border-blue-200 transition">
+                            <i data-lucide="refresh-cw" class="w-4 h-4"></i> Actualizar
+                        </button>
+                        <button onclick="openSupplierPayableModal()" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2.5 rounded-xl flex items-center gap-2 text-sm shadow-md transition">
+                            <i data-lucide="plus" class="w-4 h-4"></i> Nueva cuenta
+                        </button>
+                    </div>
+                </div>
+
+                <div id="supplier-payables-kpis" class="grid grid-cols-2 xl:grid-cols-4 gap-3"></div>
+
+                <div class="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+                    <div class="flex items-center justify-between gap-3 mb-3">
+                        <div>
+                            <h4 class="font-bold text-amber-900 flex items-center gap-2"><i data-lucide="bell-ring" class="w-4 h-4"></i> Recordatorios de pago</h4>
+                            <p class="text-xs text-amber-800 mt-0.5">Cuentas vencidas y vencimientos dentro de los próximos 7 días.</p>
+                        </div>
+                        <span id="supplier-reminders-count" class="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-amber-800">0</span>
+                    </div>
+                    <div id="supplier-reminders-list" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
+                        <p class="text-sm text-amber-800">Cargando vencimientos...</p>
+                    </div>
+                </div>
+
+                <div class="flex flex-col sm:flex-row gap-3">
+                    <label class="relative block w-full sm:max-w-md">
+                        <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
+                        <input type="search" id="supplier-payables-search" oninput="renderSupplierPayables()" placeholder="Buscar proveedor, factura o concepto..." class="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500">
+                    </label>
+                    <select id="supplier-payables-status" onchange="renderSupplierPayables()" class="sm:w-48 p-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="all">Todos los estados</option>
+                        <option value="Vencido">Vencidos</option>
+                        <option value="Vence pronto">Próximos 7 días</option>
+                        <option value="Parcial">Pago parcial</option>
+                        <option value="Pendiente">Pendientes</option>
+                        <option value="Pagado">Pagados</option>
+                    </select>
+                </div>
+
+                <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="table-container">
+                        <table class="w-full min-w-[1100px] text-left text-sm text-slate-600">
+                            <thead class="bg-slate-50 text-slate-700 font-semibold border-b border-slate-200">
+                                <tr><th class="p-4">Proveedor</th><th class="p-4">Concepto / Factura</th><th class="p-4">Vencimiento</th><th class="p-4 text-right">Total</th><th class="p-4 text-right">Pagado</th><th class="p-4 text-right">Saldo</th><th class="p-4">Estado</th><th class="p-4 text-right">Acciones</th></tr>
+                            </thead>
+                            <tbody id="supplier-payables-table-body">
+                                <tr><td colspan="8" class="p-5 text-center text-slate-400">Cargando cuentas por pagar...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- GANANCIAS Y COMISIONES: mantener dentro del contenedor principal como las demás vistas -->
+            <section id="view-profits" class="hidden space-y-6">
+                <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4" id="profits-kpi-row">
+                    <div class="bg-gradient-to-br from-blue-50 to-blue-100 rounded-2xl p-4 border border-blue-200 shadow-sm min-w-0">
+                        <p class="text-xs font-semibold text-blue-600 uppercase tracking-wide">Total Ventas</p>
+                        <p class="text-xl xl:text-2xl font-bold text-blue-900 mt-1 break-words" id="kpi-total-sale">$0</p>
+                    </div>
+                    <div class="bg-gradient-to-br from-amber-50 to-amber-100 rounded-2xl p-4 border border-amber-200 shadow-sm min-w-0">
+                        <p class="text-xs font-semibold text-amber-700 uppercase tracking-wide">Costo Neto</p>
+                        <p class="text-xl xl:text-2xl font-bold text-amber-900 mt-1 break-words" id="kpi-total-cost">$0</p>
+                    </div>
+                    <div class="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-2xl p-4 border border-emerald-200 shadow-sm min-w-0">
+                        <p class="text-xs font-semibold text-emerald-700 uppercase tracking-wide">Ganancia Bruta</p>
+                        <p class="text-xl xl:text-2xl font-bold text-emerald-900 mt-1 break-words" id="kpi-gross-profit">$0</p>
+                    </div>
+                    <div class="bg-gradient-to-br from-violet-50 to-violet-100 rounded-2xl p-4 border border-violet-200 shadow-sm min-w-0">
+                        <p class="text-xs font-semibold text-violet-700 uppercase tracking-wide">Comisiones Pagas</p>
+                        <p class="text-xl xl:text-2xl font-bold text-violet-900 mt-1 break-words" id="kpi-paid-comm">$0</p>
+                    </div>
+                    <div class="bg-gradient-to-br from-rose-50 to-rose-100 rounded-2xl p-4 border border-rose-200 shadow-sm min-w-0">
+                        <p class="text-xs font-semibold text-rose-700 uppercase tracking-wide">Por Distribuir</p>
+                        <p class="text-xl xl:text-2xl font-bold text-rose-900 mt-1 break-words" id="kpi-pending-comm">$0</p>
+                    </div>
+                </div>
+
+                <label class="relative block max-w-md">
+                    <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
+                    <input type="search" oninput="filterSectionRows('view-profits', this.value)" placeholder="Buscar presupuesto, cliente, destino o pago..." aria-label="Buscar ganancias y pagos" class="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500">
+                </label>
+
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-5 border-b border-slate-200">
+                        <div>
+                            <h3 class="text-base font-bold text-slate-900">Ganancia por Presupuesto / Reserva</h3>
+                            <p class="text-xs text-slate-500 mt-0.5">Diferencia entre precio de venta y costo neto de cada operación</p>
+                        </div>
+                        <button onclick="loadProfits()" class="self-start sm:self-auto flex items-center gap-2 px-4 py-2 text-sm font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-xl border border-blue-200 transition">
+                            <i data-lucide="refresh-cw" class="w-4 h-4"></i> Actualizar
+                        </button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full min-w-[1100px] text-sm">
+                            <thead class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide">
+                                <tr>
+                                    <th class="p-3 text-left">N° Presup.</th>
+                                    <th class="p-3 text-left">Cliente</th>
+                                    <th class="p-3 text-left">Destino</th>
+                                    <th class="p-3 text-right">Precio Venta</th>
+                                    <th class="p-3 text-right">Costo Neto</th>
+                                    <th class="p-3 text-right">Ganancia</th>
+                                    <th class="p-3 text-right">Margen %</th>
+                                    <th class="p-3 text-right">Distribuido</th>
+                                    <th class="p-3 text-right">Por Distribuir</th>
+                                    <th class="p-3 text-center">Estado</th>
+                                    <th class="p-3 text-center">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="profits-table-body" class="divide-y divide-slate-100">
+                                <tr><td colspan="11" class="p-6 text-center text-slate-400">Cargando datos...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="p-5 border-b border-slate-200">
+                        <h3 class="text-base font-bold text-slate-900">Historial de Comisiones / Distribuciones</h3>
+                        <p class="text-xs text-slate-500 mt-0.5">Todos los pagos de comisiones registrados a usuarios</p>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full min-w-[760px] text-sm">
+                            <thead class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide">
+                                <tr>
+                                    <th class="p-3 text-left">Presupuesto</th>
+                                    <th class="p-3 text-left">Usuario</th>
+                                    <th class="p-3 text-right">Monto</th>
+                                    <th class="p-3 text-left">Método</th>
+                                    <th class="p-3 text-left">Fecha</th>
+                                    <th class="p-3 text-left">Notas</th>
+                                    <th class="p-3 text-center">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="commissions-table-body" class="divide-y divide-slate-100">
+                                <tr><td colspan="7" class="p-6 text-center text-slate-400">Sin comisiones registradas</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- DASHBOARD DE GANANCIAS POR USUARIO -->
+            <section id="view-user-earnings" class="user-earnings-dashboard hidden space-y-3">
+                <div class="flex items-center justify-between gap-3">
+                    <div>
+                        <h3 class="text-lg font-bold text-slate-900">Ganancias por Usuario</h3>
+                        <p class="text-[11px] text-slate-500">Retiros, evolución y detalle por usuario.</p>
+                    </div>
+                    <button onclick="loadUserEarningsDashboard()" class="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg border border-blue-200 transition">
+                        <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Actualizar
+                    </button>
+                </div>
+
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3">
+                    <div class="grid grid-cols-2 xl:grid-cols-4 gap-2">
+                        <div>
+                            <label for="earnings-filter-user" class="block text-[10px] font-semibold text-slate-600 mb-0.5">Usuario</label>
+                            <select id="earnings-filter-user" onchange="renderUserEarningsDashboard()" class="w-full p-2 border border-slate-300 rounded-lg text-xs bg-white outline-none focus:ring-2 focus:ring-blue-500">
+                                <option value="all">Todos los usuarios</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="earnings-filter-currency" class="block text-[10px] font-semibold text-slate-600 mb-0.5">Moneda</label>
+                            <select id="earnings-filter-currency" onchange="renderUserEarningsDashboard()" class="w-full p-2 border border-slate-300 rounded-lg text-xs bg-white outline-none focus:ring-2 focus:ring-blue-500">
+                                <option value="all">Todas las monedas</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="earnings-filter-from" class="block text-[10px] font-semibold text-slate-600 mb-0.5">Desde</label>
+                            <input id="earnings-filter-from" type="date" onchange="renderUserEarningsDashboard()" class="w-full p-2 border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label for="earnings-filter-to" class="block text-[10px] font-semibold text-slate-600 mb-0.5">Hasta</label>
+                            <input id="earnings-filter-to" type="date" onchange="renderUserEarningsDashboard()" class="w-full p-2 border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-3 gap-2">
+                    <div class="bg-gradient-to-br from-violet-50 to-violet-100 rounded-xl p-3 border border-violet-200">
+                        <p class="text-[10px] font-semibold text-violet-700 uppercase tracking-wide">Total distribuido</p>
+                        <p id="earnings-kpi-total" class="text-sm font-bold text-violet-900 mt-1 truncate">-</p>
+                    </div>
+                    <div class="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-3 border border-blue-200">
+                        <p class="text-[10px] font-semibold text-blue-700 uppercase tracking-wide">Pagos realizados</p>
+                        <p id="earnings-kpi-payments" class="text-lg font-bold text-blue-900 mt-1">0</p>
+                    </div>
+                    <div class="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl p-3 border border-emerald-200">
+                        <p class="text-[10px] font-semibold text-emerald-700 uppercase tracking-wide">Usuarios con pagos</p>
+                        <p id="earnings-kpi-users" class="text-lg font-bold text-emerald-900 mt-1">0</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 xl:grid-cols-2 gap-3">
+                    <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3">
+                        <h4 class="text-sm font-bold text-slate-900">Distribuido por usuario</h4>
+                        <p class="text-[10px] text-slate-500 mt-0.5">Totales según filtros</p>
+                        <div id="earnings-user-chart" class="mt-2 space-y-2 max-h-[150px] overflow-y-auto"></div>
+                    </div>
+                    <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3">
+                        <h4 class="text-sm font-bold text-slate-900">Evolución mensual</h4>
+                        <p class="text-[10px] text-slate-500 mt-0.5">Montos por mes y usuario</p>
+                        <div id="earnings-month-chart" class="mt-1 min-h-0"></div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 xl:grid-cols-2 gap-3">
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="px-3 py-2 border-b border-slate-200">
+                        <h4 class="text-xs font-bold text-slate-900">Resumen por usuario</h4>
+                    </div>
+                    <div class="max-h-[150px] overflow-auto">
+                        <table class="w-full min-w-[600px] text-left text-xs text-slate-600">
+                            <thead class="bg-slate-50 text-slate-700 font-semibold sticky top-0">
+                                <tr><th class="p-2">Usuario</th><th class="p-2">Rol</th><th class="p-2">Moneda</th><th class="p-2 text-right">Distribuido</th><th class="p-2 text-right">Pagos</th><th class="p-2">Último</th></tr>
+                            </thead>
+                            <tbody id="earnings-user-summary-body"><tr><td colspan="6" class="p-5 text-center text-slate-400">Cargando resumen...</td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="px-3 py-2 border-b border-slate-200">
+                        <h4 class="text-xs font-bold text-slate-900">Detalle de distribuciones</h4>
+                    </div>
+                    <div class="max-h-[150px] overflow-auto">
+                        <table class="w-full min-w-[720px] text-left text-xs text-slate-600">
+                            <thead class="bg-slate-50 text-slate-700 font-semibold sticky top-0">
+                                <tr><th class="p-2">Fecha</th><th class="p-2">Usuario</th><th class="p-2">Presupuesto / Operación</th><th class="p-2 text-right">Importe</th><th class="p-2">Método</th><th class="p-2">Concepto</th></tr>
+                            </thead>
+                            <tbody id="earnings-payment-detail-body"><tr><td colspan="6" class="p-5 text-center text-slate-400">Cargando distribuciones...</td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
+                </div>
+            </section>
+
+            <!-- LOG DE ACTIVIDAD -->
+            <section id="view-audit" class="hidden space-y-6">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                        <h3 class="text-xl font-bold text-slate-900">Log de Actividad</h3>
+                        <p class="text-xs text-slate-500">Accesos, cierres de sesión y operaciones realizadas en el sistema.</p>
+                    </div>
+                    <button onclick="loadAuditLogs()" class="self-start flex items-center gap-2 px-4 py-2 text-sm font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-xl border border-blue-200 transition">
+                        <i data-lucide="refresh-cw" class="w-4 h-4"></i> Actualizar
+                    </button>
+                </div>
+
+                <label class="relative block max-w-md">
+                    <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
+                    <input type="search" oninput="filterSectionRows('view-audit', this.value)" placeholder="Buscar usuario, acción, sección o resultado..." aria-label="Buscar en log de actividad" class="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500">
+                </label>
+
+                <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="table-container">
+                        <table class="w-full min-w-[1000px] text-left text-sm text-slate-600">
+                            <thead class="bg-slate-50 text-slate-700 font-semibold border-b border-slate-200">
+                                <tr>
+                                    <th class="p-4">Fecha y hora</th>
+                                    <th class="p-4">Usuario</th>
+                                    <th class="p-4">Acción</th>
+                                    <th class="p-4">Método / Sección</th>
+                                    <th class="p-4">Resultado</th>
+                                    <th class="p-4">Detalle</th>
+                                </tr>
+                            </thead>
+                            <tbody id="audit-table-body">
+                                <tr><td colspan="6" class="p-4 text-center text-slate-400">Cargando log de actividad...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <p id="audit-results-count" class="px-4 py-3 text-xs text-slate-500 border-t border-slate-100"></p>
+                </div>
+            </section>
+
+        </div>
+    </main>
+
+    <!-- MODAL PRESUPUESTO -->
+    <div id="modal-budget" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-2xl max-w-4xl w-full p-6 space-y-6 shadow-2xl overflow-y-auto max-h-[90vh]">
+            <div class="flex items-center justify-between border-b border-slate-200 pb-4">
+                <h3 id="modal-budget-title" class="text-lg font-bold text-slate-900">Crear Presupuesto</h3>
+                <button onclick="closeModal('modal-budget')" class="text-slate-400 hover:text-slate-600 p-1"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <form id="form-budget" onsubmit="saveBudget(event)" class="space-y-4">
+                <input type="hidden" id="budget-id">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Cliente *</label>
+                        <select id="budget-client-id" required class="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                            <!-- Options populated via JS -->
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Título del Viaje *</label>
+                        <input type="text" id="budget-title-input" required placeholder="Ej: Vacaciones en Cancún All-Inclusive" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Destino *</label>
+                        <input type="text" id="budget-destination" required placeholder="Ej: Cancún, México" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 mb-1">Fecha Salida</label>
+                            <input type="date" id="budget-start-date" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 mb-1">Fecha Regreso</label>
+                            <input type="date" id="budget-end-date" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Moneda</label>
+                        <select id="budget-currency" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                            <option value="USD">USD - Dólar Estadounidense</option>
+                            <option value="ARS">ARS - Peso Argentino</option>
+                            <option value="EUR">EUR - Euro</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Estado</label>
+                        <select id="budget-status" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                            <option value="Borrador">Borrador</option>
+                            <option value="Enviado">Enviado al Cliente</option>
+                            <option value="Aprobado">Aprobado</option>
+                            <option value="Rechazado">Rechazado</option>
+                            <option value="Convertido">Convertido a Reserva</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Budget Line Items -->
+                <div class="space-y-3 pt-4 border-t border-slate-200">
+                    <div class="flex items-center justify-between">
+                        <h4 class="font-bold text-sm text-slate-900">Ítems / Servicios del Presupuesto</h4>
+                        <button type="button" onclick="addBudgetItemRow()" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1">
+                            <i data-lucide="plus" class="w-3.5 h-3.5"></i> Agregar Ítem
+                        </button>
+                    </div>
+                    <div id="budget-items-container" class="space-y-2">
+                        <!-- Dynamic items -->
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Notas / Observaciones</label>
+                    <textarea id="budget-notes" rows="2" placeholder="Condiciones de pago, políticas de cancelación, etc." class="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"></textarea>
+                </div>
+
+                <div class="flex items-center justify-end gap-3 pt-4 border-t border-slate-200">
+                    <button type="button" onclick="closeModal('modal-budget')" class="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl">Cancelar</button>
+                    <button type="submit" class="px-5 py-2 text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md">Guardar Presupuesto</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL PAGO (REGISTRAR PAGO TOTAL O PARCIAL) -->
+    <div id="modal-payment" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 space-y-6 shadow-2xl">
+            <div class="flex items-center justify-between border-b border-slate-200 pb-4">
+                <h3 class="text-lg font-bold text-slate-900">Registrar Pago</h3>
+                <button onclick="closeModal('modal-payment')" class="text-slate-400 hover:text-slate-600 p-1"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <form id="form-payment" onsubmit="savePayment(event)" class="space-y-4">
+                <input type="hidden" id="payment-booking-id">
+                <div class="bg-slate-50 p-4 rounded-xl space-y-1 text-sm border border-slate-200">
+                    <p class="font-semibold text-slate-800" id="pay-modal-booking-title">-</p>
+                    <p class="text-xs text-slate-500" id="pay-modal-client-name">-</p>
+                    <div class="flex justify-between pt-2 text-xs font-bold border-t border-slate-200">
+                        <span class="text-slate-600">Saldo Pendiente:</span>
+                        <span class="text-amber-600" id="pay-modal-balance-due">$0.00</span>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Monto a Pagar *</label>
+                    <input type="number" step="0.01" id="payment-amount" required placeholder="0.00" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Fecha del Pago *</label>
+                    <input type="date" id="payment-date" required class="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Método de Pago *</label>
+                    <select id="payment-method" required class="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        <option value="Transferencia Bancaria">Transferencia Bancaria</option>
+                        <option value="Efectivo">Efectivo</option>
+                        <option value="Tarjeta de Crédito">Tarjeta de Crédito</option>
+                        <option value="Tarjeta de Débito">Tarjeta de Débito</option>
+                        <option value="MercadoPago">MercadoPago</option>
+                        <option value="Otro">Otro</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Código de Referencia / Comprobante</label>
+                    <input type="text" id="payment-reference" placeholder="Ej: TRF-9981240" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Notas</label>
+                    <input type="text" id="payment-notes" placeholder="Ej: Seña del 30% reservada" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+
+                <div class="flex items-center justify-end gap-3 pt-4 border-t border-slate-200">
+                    <button type="button" onclick="closeModal('modal-payment')" class="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl">Cancelar</button>
+                    <button type="submit" class="px-5 py-2 text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-md">Confirmar Pago</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL IMPRIMIR RECIBO / VISTA PREVIA -->
+    <div id="modal-receipt" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[70] flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-2xl max-w-2xl w-full p-6 space-y-6 shadow-2xl overflow-y-auto max-h-[90vh]">
+            <div class="flex items-center justify-between border-b border-slate-200 pb-4 no-print">
+                <h3 class="text-lg font-bold text-slate-900">Comprobante de Pago</h3>
+                <div class="flex items-center gap-2">
+                    <button onclick="shareReceiptOnWhatsApp()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1">
+                        <i data-lucide="message-circle" class="w-4 h-4"></i> Enviar por WhatsApp
+                    </button>
+                    <button onclick="window.print()" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1">
+                        <i data-lucide="printer" class="w-4 h-4"></i> Imprimir / Guardar PDF
+                    </button>
+                    <button onclick="closeModal('modal-receipt')" class="text-slate-400 hover:text-slate-600 p-1"><i data-lucide="x" class="w-5 h-5"></i></button>
+                </div>
+            </div>
+
+            <!-- Printable Document -->
+            <div id="printable-area" class="p-6 border border-slate-200 rounded-2xl space-y-6 bg-white">
+                <div class="flex justify-between items-start border-b border-slate-200 pb-4">
+                    <div class="flex items-center gap-3">
+                        <img src="/static/img/logo.png" alt="Plaza Bohemia Logo" class="w-14 h-14 object-contain">
+                        <div>
+                            <h2 class="text-xl font-bold text-slate-900">Plaza Bohemia Viajes</h2>
+                            <p class="text-xs text-slate-500">EVT Legajo 18492 | CUIT: 30-71982301-4</p>
+                            <p class="text-xs text-slate-500">Av. Corrientes 1250, Piso 4, CABA</p>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <span class="inline-block bg-blue-100 text-blue-800 text-xs font-bold px-3 py-1 rounded-full uppercase">Recibo Oficial</span>
+                        <p class="text-sm font-bold text-slate-800 mt-2" id="rec-number">PAG-2026-0000</p>
+                        <p class="text-xs text-slate-500" id="rec-date">Fecha: -</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4 text-sm bg-slate-50 p-4 rounded-xl">
+                    <div>
+                        <p class="text-xs text-slate-400 font-semibold uppercase">Recibido de:</p>
+                        <p class="font-bold text-slate-800" id="rec-client-name">-</p>
+                        <p class="text-xs text-slate-600" id="rec-client-doc">Doc: -</p>
+                    </div>
+                    <div>
+                        <p class="text-xs text-slate-400 font-semibold uppercase">En concepto de:</p>
+                        <p class="font-bold text-slate-800" id="rec-booking-title">-</p>
+                        <p class="text-xs text-slate-600" id="rec-booking-number">Reserva: -</p>
+                    </div>
+                </div>
+
+                <div class="space-y-2 border-t border-b border-slate-200 py-4 text-sm">
+                    <div class="flex justify-between">
+                        <span class="text-slate-600">Monto Abonado:</span>
+                        <span class="font-bold text-emerald-600 text-lg" id="rec-amount">$0.00</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-slate-600">Método de Pago:</span>
+                        <span class="font-medium text-slate-800" id="rec-method">-</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-slate-600">Tipo de Pago:</span>
+                        <span class="font-medium text-slate-800" id="rec-type">-</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-slate-600">Referencia / Comprobante:</span>
+                        <span class="font-medium text-slate-800" id="rec-reference">-</span>
+                    </div>
+                </div>
+
+                <div class="pt-8 flex justify-between items-end text-xs text-slate-400">
+                    <div>
+                        <p>Atendido por: <span id="rec-agent-name" class="font-semibold text-slate-700">-</span></p>
+                    </div>
+                    <div class="text-center border-t border-slate-300 pt-2 w-48">
+                        <p class="font-semibold text-slate-600">Firma y Sello Agencia</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL CLIENTE -->
+    <div id="modal-client" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 space-y-6 shadow-2xl">
+            <div class="flex items-center justify-between border-b border-slate-200 pb-4">
+                <h3 id="modal-client-title" class="text-lg font-bold text-slate-900">Nuevo Cliente</h3>
+                <button onclick="closeModal('modal-client')" class="text-slate-400 hover:text-slate-600 p-1"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <form id="form-client" onsubmit="saveClient(event)" class="space-y-4">
+                <input type="hidden" id="client-id">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Nombre Completo / Razón Social *</label>
+                    <input type="text" id="client-name" required placeholder="Ej: María Fernández" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Documento / Pasaporte / CUIT *</label>
+                    <input type="text" id="client-doc" required placeholder="Ej: DNI 35.892.102" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Correo Electrónico *</label>
+                    <input type="email" id="client-email" required placeholder="maria@ejemplo.com" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Teléfono *</label>
+                    <input type="text" id="client-phone" required placeholder="+54 9 11 4589-1234" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Dirección</label>
+                    <input type="text" id="client-address" placeholder="Av. Corrientes 1420, CABA" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Notas / Preferencias</label>
+                    <textarea id="client-notes" rows="2" placeholder="Preferencias de vuelo, alergias, etc." class="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"></textarea>
+                </div>
+
+                <div class="flex items-center justify-end gap-3 pt-4 border-t border-slate-200">
+                    <button type="button" onclick="closeModal('modal-client')" class="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl">Cancelar</button>
+                    <button type="submit" class="px-5 py-2 text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md">Guardar Cliente</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL PROVEEDOR -->
+    <div id="modal-supplier" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 space-y-6 shadow-2xl">
+            <div class="flex items-center justify-between border-b border-slate-200 pb-4">
+                <h3 id="modal-supplier-title" class="text-lg font-bold text-slate-900">Nuevo Proveedor</h3>
+                <button onclick="closeModal('modal-supplier')" class="text-slate-400 hover:text-slate-600 p-1"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <form id="form-supplier" onsubmit="saveSupplier(event)" class="space-y-4">
+                <input type="hidden" id="supplier-id">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Nombre del Proveedor *</label>
+                    <input type="text" id="supplier-name" required placeholder="Ej: Hotel Riu Cancún" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Categoría *</label>
+                    <select id="supplier-category" required class="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        <option value="Hotel">Hotel</option>
+                        <option value="Vuelos">Vuelos / Aerolínea</option>
+                        <option value="Tour">Tour / Operador Mayorista</option>
+                        <option value="Traslado">Traslados</option>
+                        <option value="Seguro de Viaje">Seguro de Viaje</option>
+                        <option value="Otro">Otro</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Persona de Contacto</label>
+                    <input type="text" id="supplier-contact" placeholder="Ej: Marta Torres" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Teléfono</label>
+                    <input type="text" id="supplier-phone" placeholder="+54 11 5168-9000" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Correo Electrónico</label>
+                    <input type="email" id="supplier-email" placeholder="reservas@proveedor.com" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+
+                <div class="flex items-center justify-end gap-3 pt-4 border-t border-slate-200">
+                    <button type="button" onclick="closeModal('modal-supplier')" class="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl">Cancelar</button>
+                    <button type="submit" class="px-5 py-2 text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md">Guardar Proveedor</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL USUARIO -->
+    <div id="modal-user" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 space-y-6 shadow-2xl">
+            <div class="flex items-center justify-between border-b border-slate-200 pb-4">
+                <h3 id="modal-user-title" class="text-lg font-bold text-slate-900">Nuevo Usuario</h3>
+                <button onclick="closeModal('modal-user')" class="text-slate-400 hover:text-slate-600 p-1"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <form id="form-user" onsubmit="saveUser(event)" class="space-y-4">
+                <input type="hidden" id="user-id">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Nombre de Usuario *</label>
+                    <input type="text" id="user-username" required placeholder="ej: laura_agente" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Nombre Completo *</label>
+                    <input type="text" id="user-fullname" required placeholder="ej: Laura Agente de Ventas" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Correo Electrónico *</label>
+                    <input type="email" id="user-email" required placeholder="laura@agencia.com" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Contraseña <span id="user-pw-hint" class="font-normal text-slate-400">(obligatoria para nuevos)</span></label>
+                    <input type="password" id="user-password" placeholder="••••••••" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Rol de Usuario *</label>
+                    <select id="user-role" required class="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        <option value="agente">Agente de Ventas</option>
+                        <option value="contador">Contador / Finanzas</option>
+                        <option value="admin">Administrador General</option>
+                    </select>
+                </div>
+
+                <div class="flex items-center justify-end gap-3 pt-4 border-t border-slate-200">
+                    <button type="button" onclick="closeModal('modal-user')" class="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl">Cancelar</button>
+                    <button type="submit" class="px-5 py-2 text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md">Guardar Usuario</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL HISTORIAL DE PAGOS DE UNA RESERVA -->
+    <div id="modal-booking-payments" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-2xl max-w-4xl w-full p-6 space-y-6 shadow-2xl overflow-y-auto max-h-[90vh]">
+            <div class="flex items-center justify-between border-b border-slate-200 pb-4">
+                <div>
+                    <h3 id="hist-modal-title" class="text-lg font-bold text-slate-900">Historial de Pagos</h3>
+                    <p id="hist-modal-subtitle" class="text-xs text-slate-500">Detalle completo de pagos parciales y señas registradas</p>
+                </div>
+                <button onclick="closeModal('modal-booking-payments')" class="text-slate-400 hover:text-slate-600 p-1"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+
+            <!-- Financial Summary Header -->
+            <div class="grid grid-cols-3 gap-4 text-center">
+                <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                    <span class="text-xs text-slate-500 font-semibold uppercase">Total Reserva</span>
+                    <p class="text-lg font-bold text-slate-900" id="hist-modal-total">$0.00</p>
+                </div>
+                <div class="bg-emerald-50 p-3 rounded-xl border border-emerald-200">
+                    <span class="text-xs text-emerald-700 font-semibold uppercase">Total Cobrado</span>
+                    <p class="text-lg font-bold text-emerald-600" id="hist-modal-paid">$0.00</p>
+                </div>
+                <div class="bg-amber-50 p-3 rounded-xl border border-amber-200">
+                    <span class="text-xs text-amber-700 font-semibold uppercase">Saldo Restante</span>
+                    <p class="text-lg font-bold text-amber-600" id="hist-modal-balance">$0.00</p>
+                </div>
+            </div>
+
+            <!-- Detailed Payments Table -->
+            <div class="table-container border rounded-xl overflow-hidden">
+                <table class="w-full text-left text-sm text-slate-600">
+                    <thead class="bg-slate-50 text-slate-700 font-semibold border-b border-slate-200">
+                        <tr>
+                            <th class="p-3">Nº Pago</th>
+                            <th class="p-3">Fecha de Pago</th>
+                            <th class="p-3">Hora de Registro</th>
+                            <th class="p-3">Monto</th>
+                            <th class="p-3">Método</th>
+                            <th class="p-3">Tipo</th>
+                            <th class="p-3">Comprobante / Ref</th>
+                            <th class="p-3">Registrado Por</th>
+                            <th class="p-3 text-right">Recibo</th>
+                        </tr>
+                    </thead>
+                    <tbody id="hist-modal-payments-body">
+                        <tr><td colspan="9" class="p-4 text-center text-slate-400">Sin pagos registrados</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="flex items-center justify-between pt-4 border-t border-slate-200">
+                <button type="button" id="hist-modal-add-payment-btn" onclick="" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-4 py-2 rounded-xl transition shadow-sm">
+                    + Registrar Nuevo Pago Parcial
+                </button>
+                <button type="button" onclick="closeModal('modal-booking-payments')" class="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL EDITAR RESERVA -->
+    <div id="modal-edit-booking" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-2xl max-w-lg w-full p-6 space-y-6 shadow-2xl">
+            <div class="flex items-center justify-between border-b border-slate-200 pb-4">
+                <h3 id="modal-booking-edit-title" class="text-lg font-bold text-slate-900">Editar Reserva / Expediente</h3>
+                <button onclick="closeModal('modal-edit-booking')" class="text-slate-400 hover:text-slate-600 p-1"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <form id="form-edit-booking" onsubmit="saveBookingEdit(event)" class="space-y-4">
+                <input type="hidden" id="booking-edit-id">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Cliente *</label>
+                    <select id="booking-edit-client-id" required class="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        <!-- Options populated via JS -->
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Título del Viaje *</label>
+                    <input type="text" id="booking-edit-title" required class="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Destino *</label>
+                    <input type="text" id="booking-edit-destination" required class="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Fecha Salida</label>
+                        <input type="date" id="booking-edit-start-date" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Fecha Regreso</label>
+                        <input type="date" id="booking-edit-end-date" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Moneda</label>
+                        <select id="booking-edit-currency" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                            <option value="USD">USD - Dólar Estadounidense</option>
+                            <option value="ARS">ARS - Peso Argentino</option>
+                            <option value="EUR">EUR - Euro</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Monto Total ($) *</label>
+                        <input type="number" step="0.01" id="booking-edit-total-amount" required class="w-full p-2.5 border font-bold text-slate-900 border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Estado de la Reserva</label>
+                    <select id="booking-edit-status" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        <option value="Confirmada">Confirmada</option>
+                        <option value="En curso">En curso</option>
+                        <option value="Finalizada">Finalizada</option>
+                        <option value="Cancelada">Cancelada</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Notas / Observaciones</label>
+                    <textarea id="booking-edit-notes" rows="2" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"></textarea>
+                </div>
+
+                <div class="flex items-center justify-end gap-3 pt-4 border-t border-slate-200">
+                    <button type="button" onclick="closeModal('modal-edit-booking')" class="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl">Cancelar</button>
+                    <button type="submit" class="px-5 py-2 text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md">Guardar Cambios</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: Nueva cuenta por pagar a proveedor -->
+    <div id="modal-supplier-payable" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-2xl max-w-xl w-full p-6 space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div class="flex items-center justify-between border-b border-slate-200 pb-4">
+                <div><h3 class="text-lg font-bold text-slate-900">Nueva cuenta por pagar</h3><p class="text-xs text-slate-500 mt-1">Cargue una factura u obligación; luego podrá registrar uno o varios pagos.</p></div>
+                <button onclick="closeModal('modal-supplier-payable')" class="text-slate-400 hover:text-slate-600 p-1" aria-label="Cerrar"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <form id="form-supplier-payable" onsubmit="saveSupplierPayable(event)" class="space-y-4">
+                <div>
+                    <label for="sp-supplier-id" class="block text-xs font-semibold text-slate-700 mb-1">Proveedor *</label>
+                    <select id="sp-supplier-id" required class="w-full p-2.5 border border-slate-300 rounded-xl text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500"><option value="">Seleccionar proveedor...</option></select>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div><label for="sp-concept" class="block text-xs font-semibold text-slate-700 mb-1">Concepto *</label><input id="sp-concept" required maxlength="200" placeholder="Ej. Aéreos, hotel, servicios" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"></div>
+                    <div><label for="sp-invoice" class="block text-xs font-semibold text-slate-700 mb-1">Nº factura / referencia</label><input id="sp-invoice" placeholder="Factura o comprobante" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"></div>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div><label for="sp-currency" class="block text-xs font-semibold text-slate-700 mb-1">Moneda</label><select id="sp-currency" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500"><option>USD</option><option>ARS</option><option>EUR</option></select></div>
+                    <div><label for="sp-total" class="block text-xs font-semibold text-slate-700 mb-1">Importe total *</label><input id="sp-total" type="number" min="0.01" step="0.01" required placeholder="0.00" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"></div>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div><label for="sp-issue-date" class="block text-xs font-semibold text-slate-700 mb-1">Fecha de emisión *</label><input id="sp-issue-date" type="date" required class="w-full p-2.5 border border-slate-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"></div>
+                    <div><label for="sp-due-date" class="block text-xs font-semibold text-slate-700 mb-1">Fecha de vencimiento *</label><input id="sp-due-date" type="date" required class="w-full p-2.5 border border-slate-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"></div>
+                </div>
+                <div><label for="sp-notes" class="block text-xs font-semibold text-slate-700 mb-1">Notas</label><textarea id="sp-notes" rows="2" placeholder="Condiciones o comentarios" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"></textarea></div>
+                <div class="flex justify-end gap-2 pt-3 border-t border-slate-200">
+                    <button type="button" onclick="closeModal('modal-supplier-payable')" class="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl">Cancelar</button>
+                    <button type="submit" class="px-5 py-2 text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-xl">Guardar cuenta</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: Registrar pago a proveedor -->
+    <div id="modal-supplier-payment" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 space-y-5 shadow-2xl">
+            <div class="flex items-center justify-between border-b border-slate-200 pb-4">
+                <div><h3 class="text-lg font-bold text-slate-900">Registrar pago</h3><p id="supplier-payment-subtitle" class="text-xs text-slate-500 mt-1"></p></div>
+                <button onclick="closeModal('modal-supplier-payment')" class="text-slate-400 hover:text-slate-600 p-1"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <div class="flex justify-between items-center rounded-xl bg-amber-50 border border-amber-200 p-3"><span class="text-xs font-semibold text-amber-800">Saldo pendiente</span><strong id="supplier-payment-balance" class="text-amber-900"></strong></div>
+            <form id="form-supplier-payment" onsubmit="saveSupplierPayment(event)" class="space-y-4">
+                <input type="hidden" id="supplier-payment-payable-id">
+                <div><label for="supplier-payment-amount" class="block text-xs font-semibold text-slate-700 mb-1">Importe a pagar *</label><input id="supplier-payment-amount" type="number" min="0.01" step="0.01" required placeholder="0.00" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"></div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div><label for="supplier-payment-date" class="block text-xs font-semibold text-slate-700 mb-1">Fecha de pago *</label><input id="supplier-payment-date" type="date" required class="w-full p-2.5 border border-slate-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"></div>
+                    <div><label for="supplier-payment-method" class="block text-xs font-semibold text-slate-700 mb-1">Método *</label><select id="supplier-payment-method" required class="w-full p-2.5 border border-slate-300 rounded-xl text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500"><option>Transferencia</option><option>Efectivo</option><option>Tarjeta</option><option>MercadoPago</option><option>Cheque</option><option>Otro</option></select></div>
+                </div>
+                <div><label for="supplier-payment-reference" class="block text-xs font-semibold text-slate-700 mb-1">Referencia</label><input id="supplier-payment-reference" placeholder="Nº de operación o comprobante" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"></div>
+                <div><label for="supplier-payment-notes" class="block text-xs font-semibold text-slate-700 mb-1">Notas</label><textarea id="supplier-payment-notes" rows="2" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"></textarea></div>
+                <div class="flex justify-end gap-2 pt-3 border-t border-slate-200">
+                    <button type="button" onclick="closeModal('modal-supplier-payment')" class="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl">Cancelar</button>
+                    <button type="submit" class="px-5 py-2 text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl">Registrar pago</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: Detalle e historial de pagos a proveedor -->
+    <div id="modal-supplier-payable-detail" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[65] flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-2xl max-w-4xl w-full p-6 space-y-4 shadow-2xl max-h-[90vh] flex flex-col">
+            <div class="flex items-center justify-between border-b border-slate-200 pb-3">
+                <div><h3 id="supplier-payable-detail-title" class="text-lg font-bold text-slate-900">Cuenta del proveedor</h3><p id="supplier-payable-detail-subtitle" class="text-xs text-slate-500 mt-1"></p></div>
+                <button onclick="closeModal('modal-supplier-payable-detail')" class="text-slate-400 hover:text-slate-600 p-1"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <div class="grid grid-cols-3 gap-2 text-center">
+                <div class="rounded-xl bg-slate-50 p-3"><span class="text-[10px] uppercase text-slate-500">Total</span><p id="supplier-detail-total" class="font-bold text-slate-900"></p></div>
+                <div class="rounded-xl bg-emerald-50 p-3"><span class="text-[10px] uppercase text-emerald-700">Pagado</span><p id="supplier-detail-paid" class="font-bold text-emerald-800"></p></div>
+                <div class="rounded-xl bg-amber-50 p-3"><span class="text-[10px] uppercase text-amber-700">Saldo</span><p id="supplier-detail-balance" class="font-bold text-amber-800"></p></div>
+            </div>
+            <div class="overflow-auto border border-slate-200 rounded-xl">
+                <table class="w-full min-w-[650px] text-left text-sm text-slate-600">
+                    <thead class="bg-slate-50 text-slate-700 font-semibold sticky top-0"><tr><th class="p-3">Fecha</th><th class="p-3 text-right">Importe</th><th class="p-3">Método</th><th class="p-3">Referencia</th><th class="p-3">Registrado por</th><th class="p-3">Notas</th></tr></thead>
+                    <tbody id="supplier-payable-payments-body"><tr><td colspan="6" class="p-4 text-center text-slate-400">Sin pagos registrados</td></tr></tbody>
+                </table>
+            </div>
+            <div class="flex justify-end"><button onclick="closeModal('modal-supplier-payable-detail')" class="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl">Cerrar</button></div>
+        </div>
+    </div>
+
+    <!-- MODAL: Historial de distribuciones por presupuesto -->
+    <div id="modal-profit-history" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-2xl max-w-5xl w-full p-6 space-y-5 shadow-2xl max-h-[90vh] flex flex-col">
+            <div class="flex items-center justify-between border-b border-slate-200 pb-4">
+                <div>
+                    <h3 id="profit-history-title" class="text-lg font-bold text-slate-900">Pagos registrados</h3>
+                    <p id="profit-history-subtitle" class="text-xs text-slate-500 mt-1"></p>
+                </div>
+                <button onclick="closeModal('modal-profit-history')" class="text-slate-400 hover:text-slate-600 p-1" aria-label="Cerrar detalle">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div class="flex items-center justify-between gap-4 rounded-xl border border-violet-200 bg-violet-50 px-4 py-3">
+                    <div>
+                        <p class="text-xs font-semibold uppercase tracking-wide text-violet-700">Total de retiros registrados</p>
+                        <p id="profit-history-payment-count" class="text-xs text-violet-600 mt-0.5">0 pagos</p>
+                    </div>
+                    <p id="profit-history-total" class="text-lg font-bold text-violet-800">USD $ 0,00</p>
+                </div>
+                <div class="flex items-center justify-between gap-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                    <div>
+                        <p class="text-xs font-semibold uppercase tracking-wide text-emerald-700">Saldo disponible</p>
+                        <p class="text-xs text-emerald-600 mt-0.5">Ganancia aún no retirada</p>
+                    </div>
+                    <p id="profit-history-balance" class="text-lg font-bold text-emerald-800">USD $ 0,00</p>
+                </div>
+            </div>
+            <div class="overflow-auto border border-slate-200 rounded-xl">
+                <table class="w-full min-w-[800px] text-left text-sm text-slate-600">
+                    <thead class="bg-slate-50 text-slate-700 font-semibold sticky top-0">
+                        <tr>
+                            <th class="p-3">Fecha del pago</th>
+                            <th class="p-3">Usuario</th>
+                            <th class="p-3 text-right">Monto</th>
+                            <th class="p-3">Método</th>
+                            <th class="p-3">Concepto / Notas</th>
+                            <th class="p-3">Fecha de registro</th>
+                        </tr>
+                    </thead>
+                    <tbody id="profit-history-table-body" class="divide-y divide-slate-100">
+                        <tr><td colspan="6" class="p-6 text-center text-slate-400">No hay pagos registrados.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="flex justify-end">
+                <button type="button" onclick="closeModal('modal-profit-history')" class="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: Registrar Distribución de Ganancia -->
+    <div id="modal-profit-distribution" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
+            <div class="flex items-center justify-between border-b border-slate-200 pb-4">
+                <div>
+                    <h3 class="text-lg font-bold text-slate-900">Registrar Comisión / Pago</h3>
+                    <p id="profit-modal-subtitle" class="text-xs text-slate-500">Distribución de ganancia al agente</p>
+                </div>
+                <button onclick="closeModal('modal-profit-distribution')" class="text-slate-400 hover:text-slate-600 p-1">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <!-- Summary Info -->
+            <div class="grid grid-cols-3 gap-3 text-center bg-slate-50 rounded-xl p-3">
+                <div>
+                    <p class="text-[10px] uppercase font-semibold text-slate-500">Ganancia Bruta</p>
+                    <p class="font-bold text-emerald-700 text-sm" id="pdist-gross-profit">$0</p>
+                </div>
+                <div>
+                    <p class="text-[10px] uppercase font-semibold text-slate-500">Ya Distribuido</p>
+                    <p class="font-bold text-violet-700 text-sm" id="pdist-paid">$0</p>
+                </div>
+                <div>
+                    <p class="text-[10px] uppercase font-semibold text-slate-500">Saldo</p>
+                    <p class="font-bold text-rose-700 text-sm" id="pdist-pending">$0</p>
+                </div>
+            </div>
+
+            <input type="hidden" id="pdist-profit-id">
+
+            <form id="form-profit-distribution" onsubmit="saveProfitDistribution(event)" class="space-y-3">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Usuario / Agente *</label>
+                    <select id="pdist-user-id" required class="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        <option value="">Seleccionar usuario...</option>
+                    </select>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Monto *</label>
+                        <input type="number" step="0.01" id="pdist-amount" required class="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="0.00">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Fecha *</label>
+                        <input type="date" id="pdist-date" required class="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Método de Pago *</label>
+                    <select id="pdist-method" required class="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        <option value="Transferencia">Transferencia Bancaria</option>
+                        <option value="Efectivo">Efectivo</option>
+                        <option value="Cheque">Cheque</option>
+                        <option value="MercadoPago">MercadoPago / Alias</option>
+                        <option value="Crypto">Criptomonedas</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Notas / Concepto</label>
+                    <textarea id="pdist-notes" rows="2" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Concepto del pago..."></textarea>
+                </div>
+                <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-200">
+                    <button type="button" onclick="closeModal('modal-profit-distribution')" class="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl">Cancelar</button>
+                    <button type="submit" class="px-5 py-2 text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-md">Registrar Pago</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Application Script -->
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

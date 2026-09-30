@@ -1,0 +1,142 @@
+from fastapi import APIRouter, HTTPException, Depends
+from typing import List
+from datetime import datetime
+from app.database import get_db_connection
+from app.schemas import PaymentCreate, PaymentOut
+from app.routers.users import get_current_user
+
+router = APIRouter(prefix="/api/payments", tags=["Payments"])
+
+def generate_payment_number(conn):
+    cursor = conn.cursor()
+    year = datetime.now().year
+    cursor.execute("SELECT COUNT(*) FROM payments;")
+    count = cursor.fetchone()[0] + 1
+    return f"PAG-{year}-{count:04d}"
+
+@router.get("", response_model=List[PaymentOut])
+def get_payments(current_user: dict = Depends(get_current_user)):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT p.*, bk.booking_number, c.name as client_name, u.full_name as registered_by_user_name
+        FROM payments p
+        LEFT JOIN bookings bk ON p.booking_id = bk.id
+        LEFT JOIN clients c ON p.client_id = c.id
+        LEFT JOIN users u ON p.registered_by_user_id = u.id
+        ORDER BY p.id DESC;
+    """)
+    payments = cursor.fetchall()
+    conn.close()
+    return [dict(p) for p in payments]
+
+@router.get("/{payment_id}")
+def get_payment_receipt(payment_id: int, current_user: dict = Depends(get_current_user)):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT p.*, 
+               bk.booking_number, bk.title as booking_title, bk.currency, bk.total_amount as booking_total, bk.paid_amount as booking_paid, bk.balance_due as booking_balance,
+               c.name as client_name, c.document_id as client_doc, c.email as client_email, c.phone as client_phone,
+               u.full_name as registered_by_user_name
+        FROM payments p
+        LEFT JOIN bookings bk ON p.booking_id = bk.id
+        LEFT JOIN clients c ON p.client_id = c.id
+        LEFT JOIN users u ON p.registered_by_user_id = u.id
+        WHERE p.id = ?;
+    """, (payment_id,))
+    payment = cursor.fetchone()
+    conn.close()
+    if not payment:
+        raise HTTPException(status_code=404, detail="Pago no encontrado")
+
+    return dict(payment)
+
+@router.post("", response_model=PaymentOut)
+def register_payment(payload: PaymentCreate, current_user: dict = Depends(get_current_user)):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Verify booking exists
+    cursor.execute("SELECT * FROM bookings WHERE id = ?;", (payload.booking_id,))
+    booking = cursor.fetchone()
+    if not booking:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Reserva no encontrada")
+
+    if payload.amount <= 0:
+        conn.close()
+        raise HTTPException(status_code=400, detail="El monto del pago debe ser mayor a 0")
+
+    balance_due = booking["balance_due"]
+    if payload.amount > balance_due + 0.01:
+        conn.close()
+        raise HTTPException(status_code=400, detail=f"El monto ({payload.amount}) supera el saldo pendiente de la reserva ({balance_due})")
+
+    payment_number = generate_payment_number(conn)
+    user_id = current_user.get("id", 1)
+    client_id = booking["client_id"]
+
+    new_paid = booking["paid_amount"] + payload.amount
+    new_balance = max(0.0, booking["total_amount"] - new_paid)
+    payment_type = "Total" if new_balance <= 0.01 else "Parcial"
+
+    cursor.execute("""
+        INSERT INTO payments (payment_number, booking_id, client_id, amount, payment_date, payment_method, payment_type, reference_code, notes, registered_by_user_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    """, (
+        payment_number, payload.booking_id, client_id, payload.amount,
+        payload.payment_date, payload.payment_method, payment_type,
+        payload.reference_code or "", payload.notes or "", user_id
+    ))
+    payment_id = cursor.lastrowid
+
+    # Update booking balances
+    cursor.execute("""
+        UPDATE bookings SET paid_amount = ?, balance_due = ? WHERE id = ?;
+    """, (new_paid, new_balance, payload.booking_id))
+
+    conn.commit()
+
+    cursor.execute("""
+        SELECT p.*, bk.booking_number, c.name as client_name, u.full_name as registered_by_user_name
+        FROM payments p
+        LEFT JOIN bookings bk ON p.booking_id = bk.id
+        LEFT JOIN clients c ON p.client_id = c.id
+        LEFT JOIN users u ON p.registered_by_user_id = u.id
+        WHERE p.id = ?;
+    """, (payment_id,))
+    payment = cursor.fetchone()
+    conn.close()
+
+    return dict(payment)
+
+@router.delete("/{payment_id}")
+def delete_payment(payment_id: int, current_user: dict = Depends(get_current_user)):
+    if current_user.get("role") not in ["admin", "contador"]:
+        raise HTTPException(status_code=403, detail="Se requieren permisos de administrador o contador para anular pagos")
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT * FROM payments WHERE id = ?;", (payment_id,))
+    payment = cursor.fetchone()
+    if not payment:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Pago no encontrado")
+
+    booking_id = payment["booking_id"]
+    amount = payment["amount"]
+
+    cursor.execute("SELECT * FROM bookings WHERE id = ?;", (booking_id,))
+    booking = cursor.fetchone()
+    if booking:
+        new_paid = max(0.0, booking["paid_amount"] - amount)
+        new_balance = max(0.0, booking["total_amount"] - new_paid)
+        cursor.execute("UPDATE bookings SET paid_amount = ?, balance_due = ? WHERE id = ?;", (new_paid, new_balance, booking_id))
+
+    cursor.execute("DELETE FROM payments WHERE id = ?;", (payment_id,))
+    conn.commit()
+    conn.close()
+
+    return {"message": "Pago anulado y balances actualizados exitosamente"}
