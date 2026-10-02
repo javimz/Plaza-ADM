@@ -31,9 +31,9 @@ def create_supplier(payload: SupplierCreate, current_user: dict = Depends(get_cu
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT INTO suppliers (name, category, contact_name, phone, email, notes)
-        VALUES (?, ?, ?, ?, ?, ?);
-    """, (payload.name, payload.category, payload.contact_name or "", payload.phone or "", payload.email or "", payload.notes or ""))
+        INSERT INTO suppliers (name, cuit, category, contact_name, phone, email, address, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+    """, (payload.name, payload.cuit or "", payload.category, payload.contact_name or "", payload.phone or "", payload.email or "", payload.address or "", payload.notes or ""))
     supplier_id = cursor.lastrowid
     conn.commit()
 
@@ -52,9 +52,9 @@ def update_supplier(supplier_id: int, payload: SupplierCreate, current_user: dic
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
 
     cursor.execute("""
-        UPDATE suppliers SET name = ?, category = ?, contact_name = ?, phone = ?, email = ?, notes = ?
+        UPDATE suppliers SET name = ?, cuit = ?, category = ?, contact_name = ?, phone = ?, email = ?, address = ?, notes = ?
         WHERE id = ?;
-    """, (payload.name, payload.category, payload.contact_name or "", payload.phone or "", payload.email or "", payload.notes or "", supplier_id))
+    """, (payload.name, payload.cuit or "", payload.category, payload.contact_name or "", payload.phone or "", payload.email or "", payload.address or "", payload.notes or "", supplier_id))
     conn.commit()
 
     cursor.execute("SELECT * FROM suppliers WHERE id = ?;", (supplier_id,))

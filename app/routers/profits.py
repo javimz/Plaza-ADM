@@ -1,20 +1,12 @@
 from fastapi import APIRouter, HTTPException, Depends
-from typing import Optional
-from pydantic import BaseModel
 from app.database import get_db_connection
 from app.routers.users import get_current_user
 
 router = APIRouter(prefix="/api/profits", tags=["Profits"])
 
-# ─── Schemas ─────────────────────────────────────────────────────────────────
-
-class CommissionPaymentCreate(BaseModel):
-    profit_id: int
-    user_id: int
-    amount: float
-    payment_date: str
-    payment_method: str
-    notes: Optional[str] = ""
+def _require_profit_access(user: dict) -> None:
+    if user.get("role") in ["agente", "administrativa"]:
+        raise HTTPException(status_code=403, detail="No tiene permisos para consultar ganancias y comisiones")
 
 # ─── Ensure profit table exists ──────────────────────────────────────────────
 
@@ -66,6 +58,7 @@ def sync_profit_records(cursor):
 
 @router.get("/summary")
 def get_profits_summary(current_user: dict = Depends(get_current_user)):
+    _require_profit_access(current_user)
     conn = get_db_connection()
     ensure_tables(conn)
     cursor = conn.cursor()
@@ -89,44 +82,88 @@ def get_profits_summary(current_user: dict = Depends(get_current_user)):
     """)
     budgets = cursor.fetchall()
 
-    paid_by_budget = {}
     cursor.execute("""
-        SELECT bp.budget_id, COALESCE(SUM(cp.amount), 0) as paid_commissions
-        FROM budget_profits bp
-        LEFT JOIN commission_payments cp ON cp.profit_id = bp.id
-        GROUP BY bp.budget_id;
+        SELECT sp.currency, COALESCE(SUM(spp.amount), 0) as supplier_payments
+        FROM supplier_payables sp
+        JOIN supplier_payments spp ON spp.payable_id = sp.id
+        GROUP BY sp.currency;
     """)
-    paid_by_budget = {row["budget_id"]: float(row["paid_commissions"]) for row in cursor.fetchall()}
+    supplier_payments_by_currency = {
+        row["currency"] or "USD": float(row["supplier_payments"] or 0)
+        for row in cursor.fetchall()
+    }
+
+    cursor.execute("""
+        SELECT COALESCE(sp.budget_id, linked_booking.budget_id) as budget_id,
+               COALESCE(SUM(spp.amount), 0) as supplier_payments
+        FROM supplier_payables sp
+        LEFT JOIN bookings linked_booking ON linked_booking.id = sp.booking_id
+        JOIN supplier_payments spp ON spp.payable_id = sp.id
+        WHERE COALESCE(sp.budget_id, linked_booking.budget_id) IS NOT NULL
+        GROUP BY COALESCE(sp.budget_id, linked_booking.budget_id);
+    """)
+    supplier_payments_by_budget = {
+        row["budget_id"]: float(row["supplier_payments"] or 0)
+        for row in cursor.fetchall()
+    }
+
+    cursor.execute("""
+        SELECT COALESCE(sp.budget_id, linked_booking.budget_id) as budget_id,
+               spp.id as payment_id, spp.payment_date, spp.amount, spp.payment_method,
+               spp.reference, spp.notes, sp.invoice_number, sp.concept, sp.currency,
+               supplier.name as supplier_name, linked_booking.booking_number
+        FROM supplier_payables sp
+        LEFT JOIN bookings linked_booking ON linked_booking.id = sp.booking_id
+        JOIN supplier_payments spp ON spp.payable_id = sp.id
+        JOIN suppliers supplier ON supplier.id = sp.supplier_id
+        WHERE COALESCE(sp.budget_id, linked_booking.budget_id) IS NOT NULL
+        ORDER BY spp.payment_date DESC, spp.id DESC;
+    """)
+    supplier_payment_details_by_budget = {}
+    for row in cursor.fetchall():
+        supplier_payment_details_by_budget.setdefault(row["budget_id"], []).append(dict(row))
+
+    cursor.execute("""
+         SELECT b.id as budget_id, p.id as payment_id, p.payment_number,
+               p.payment_date, p.amount, p.payment_method, p.reference_code, p.notes,
+             client.name as client_name, bk.booking_number, bk.currency
+        FROM budgets b
+        JOIN bookings bk ON bk.budget_id = b.id
+        JOIN payments p ON p.booking_id = bk.id
+        LEFT JOIN clients client ON client.id = p.client_id
+        ORDER BY p.payment_date DESC, p.id DESC;
+    """)
+    customer_payment_details_by_budget = {}
+    for row in cursor.fetchall():
+        customer_payment_details_by_budget.setdefault(row["budget_id"], []).append(dict(row))
 
     result = []
     totals_by_currency = {}
     for b in budgets:
         b_dict = dict(b)
-        gross_profit = float(b["total_amount"]) - float(b["total_cost"])
+        supplier_paid = supplier_payments_by_budget.get(b["id"], 0.0)
+        gross_profit = float(b["total_amount"]) - supplier_paid
         b_dict["gross_profit"] = gross_profit
+        b_dict["supplier_payments"] = supplier_paid
+        b_dict["supplier_payment_details"] = supplier_payment_details_by_budget.get(b["id"], [])
+        b_dict["customer_payment_details"] = customer_payment_details_by_budget.get(b["id"], [])
+        b_dict["net_profit"] = gross_profit
         b_dict["margin_pct"] = round((gross_profit / float(b["total_amount"]) * 100), 2) if b["total_amount"] > 0 else 0.0
-        paid = paid_by_budget.get(b["id"], 0.0)
-        b_dict["paid_commissions"] = paid
-        b_dict["pending_commissions"] = max(0.0, gross_profit - paid)
-
         result.append(b_dict)
 
         if b["status"] != "Rechazado":
             currency = b["currency"] or "USD"
             totals = totals_by_currency.setdefault(currency, {
-                "total_cost": 0.0, "total_sale": 0.0,
-                "gross_profit": 0.0, "paid_commissions": 0.0,
-                "pending_commissions": 0.0
+                "total_cost": 0.0, "total_sale": 0.0, "gross_profit": 0.0, "supplier_payments": 0.0
             })
             totals["total_cost"] += float(b["total_cost"])
             totals["total_sale"] += float(b["total_amount"])
+            totals["supplier_payments"] += supplier_paid
             totals["gross_profit"] += gross_profit
-            totals["paid_commissions"] += paid
-            totals["pending_commissions"] += max(0.0, gross_profit - paid)
 
     # Legacy totals remain available; currency-separated totals avoid mixing currencies in the UI.
     totals = {key: sum(values[key] for values in totals_by_currency.values()) for key in (
-        "total_cost", "total_sale", "gross_profit", "paid_commissions", "pending_commissions"
+        "total_cost", "total_sale", "gross_profit"
     )}
 
     conn.close()
@@ -135,88 +172,10 @@ def get_profits_summary(current_user: dict = Depends(get_current_user)):
         "budgets": result,
         "summary": {
             **totals,
-            "by_currency": totals_by_currency
+            "by_currency": totals_by_currency,
+            "supplier_payments_by_currency": supplier_payments_by_currency,
         }
     }
-
-@router.get("/commissions")
-def get_all_commissions(current_user: dict = Depends(get_current_user)):
-    conn = get_db_connection()
-    ensure_tables(conn)
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT cp.*, u.full_name as user_name, u.role as user_role, bp.budget_id,
-               b.budget_number, b.title as budget_title, b.currency
-        FROM commission_payments cp
-        JOIN budget_profits bp ON cp.profit_id = bp.id
-        JOIN budgets b ON bp.budget_id = b.id
-        JOIN users u ON cp.user_id = u.id
-        ORDER BY cp.id DESC;
-    """)
-    commissions = cursor.fetchall()
-    conn.close()
-    return [dict(c) for c in commissions]
-
-@router.post("/commissions")
-def register_commission(payload: CommissionPaymentCreate, current_user: dict = Depends(get_current_user)):
-    if current_user.get("role") not in ["admin", "contador"]:
-        raise HTTPException(status_code=403, detail="Se requieren permisos de administrador o contador para registrar distribuciones")
-
-    conn = get_db_connection()
-    ensure_tables(conn)
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        SELECT bp.id, bp.budget_id, b.total_amount, b.total_cost, b.status
-        FROM budget_profits bp
-        JOIN budgets b ON b.id = bp.budget_id
-        WHERE bp.id = ?;
-    """, (payload.profit_id,))
-    profit = cursor.fetchone()
-    if not profit:
-        conn.close()
-        raise HTTPException(status_code=404, detail="Registro de ganancia no encontrado")
-
-    if payload.amount <= 0:
-        conn.close()
-        raise HTTPException(status_code=400, detail="El monto debe ser mayor a 0")
-
-    if profit["status"] not in ["Aprobado", "Convertido"]:
-        conn.close()
-        raise HTTPException(status_code=400, detail="Solo se pueden distribuir ganancias de presupuestos aprobados o convertidos")
-
-    gross_profit = float(profit["total_amount"]) - float(profit["total_cost"])
-    cursor.execute("SELECT COALESCE(SUM(amount), 0) FROM commission_payments WHERE profit_id = ?;", (payload.profit_id,))
-    already_paid = float(cursor.fetchone()[0])
-    remaining = max(0.0, gross_profit - already_paid)
-    if payload.amount > remaining + 1e-9:
-        conn.close()
-        raise HTTPException(status_code=400, detail=f"El pago supera la ganancia disponible ({remaining:.2f})")
-
-    cursor.execute("SELECT id FROM users WHERE id = ? AND is_active = 1;", (payload.user_id,))
-    if not cursor.fetchone():
-        conn.close()
-        raise HTTPException(status_code=404, detail="Usuario no encontrado o inactivo")
-
-    cursor.execute("""
-        UPDATE budget_profits SET total_cost = ?, total_sale = ?, gross_profit = ? WHERE id = ?;
-    """, (profit["total_cost"], profit["total_amount"], gross_profit, payload.profit_id))
-
-    cursor.execute("""
-        INSERT INTO commission_payments (profit_id, user_id, amount, payment_date, payment_method, notes)
-        VALUES (?, ?, ?, ?, ?, ?);
-    """, (payload.profit_id, payload.user_id, payload.amount, payload.payment_date, payload.payment_method, payload.notes or ""))
-    conn.commit()
-
-    cursor.execute("""
-        SELECT cp.*, u.full_name as user_name
-        FROM commission_payments cp
-        JOIN users u ON cp.user_id = u.id
-        WHERE cp.id = ?;
-    """, (cursor.lastrowid,))
-    result = cursor.fetchone()
-    conn.close()
-    return dict(result)
 
 @router.post("/ensure-profit/{budget_id}")
 def ensure_profit_record(budget_id: int, current_user: dict = Depends(get_current_user)):
@@ -246,17 +205,3 @@ def ensure_profit_record(budget_id: int, current_user: dict = Depends(get_curren
     conn.close()
     return {"profit_id": profit_id, "message": "Creado exitosamente"}
 
-@router.delete("/commissions/{commission_id}")
-def delete_commission(commission_id: int, current_user: dict = Depends(get_current_user)):
-    if current_user.get("role") not in ["admin", "contador"]:
-        raise HTTPException(status_code=403, detail="Se requieren permisos de administrador")
-    conn = get_db_connection()
-    ensure_tables(conn)
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM commission_payments WHERE id = ?;", (commission_id,))
-    if cursor.rowcount == 0:
-        conn.close()
-        raise HTTPException(status_code=404, detail="Pago de comisión no encontrado")
-    conn.commit()
-    conn.close()
-    return {"message": "Comisión eliminada"}

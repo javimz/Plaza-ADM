@@ -1,4 +1,5 @@
 import os
+import json
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -40,6 +41,16 @@ async def audit_api_changes(request: Request, call_next):
             or path in excluded_paths or path == "/api/audit"):
         return await call_next(request)
 
+    captured_body = bytearray()
+    original_receive = request.receive
+
+    async def capture_request_body():
+        message = await original_receive()
+        if message["type"] == "http.request" and len(captured_body) < 32768:
+            captured_body.extend(message.get("body", b"")[:32768 - len(captured_body)])
+        return message
+
+    request._receive = capture_request_body
     response = None
     try:
         response = await call_next(request)
@@ -51,12 +62,45 @@ async def audit_api_changes(request: Request, call_next):
         status_code = response.status_code if response is not None else 500
         action = _describe_api_change(method, path)
         result = "Completado" if status_code < 400 else f"Solicitud rechazada (HTTP {status_code})"
+        if response is not None and status_code < 400 and method in {"POST", "PUT", "PATCH"}:
+            changed_values = _describe_request_values(captured_body, request.headers.get("content-type", ""))
+            if changed_values:
+                result = f"{result}. {changed_values}"
         try:
             record_activity(action, method, path, status_code, user=actor,
                             details=result)
         except Exception:
             # Audit storage must not hide the original API response/error.
             pass
+
+
+def _describe_request_values(body: bytearray, content_type: str) -> str:
+    if not body or "application/json" not in content_type.lower():
+        return ""
+    try:
+        payload = json.loads(body)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return ""
+    if not isinstance(payload, dict):
+        return ""
+
+    values = []
+    for key, value in payload.items():
+        normalized_key = key.lower()
+        if any(secret in normalized_key for secret in ("password", "token", "secret", "credential", "authorization")):
+            continue
+        if isinstance(value, (dict, list)):
+            display_value = f"{len(value)} elemento(s)"
+        elif isinstance(value, str):
+            display_value = " ".join(value.split())[:120]
+        elif value is None:
+            display_value = "vacío"
+        else:
+            display_value = str(value)
+        values.append(f"{key}: {display_value}")
+    if not values:
+        return ""
+    return f"Valores recibidos: {'; '.join(values)}"[:1000]
 
 
 def _describe_api_change(method: str, path: str) -> str:

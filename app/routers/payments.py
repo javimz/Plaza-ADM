@@ -4,6 +4,7 @@ from datetime import datetime
 from app.database import get_db_connection
 from app.schemas import PaymentCreate, PaymentOut
 from app.routers.users import get_current_user
+from app.sales_assignments import require_sales_assignment
 
 router = APIRouter(prefix="/api/payments", tags=["Payments"])
 
@@ -14,7 +15,7 @@ def generate_payment_number(conn):
     count = cursor.fetchone()[0] + 1
     return f"PAG-{year}-{count:04d}"
 
-@router.get("", response_model=List[PaymentOut])
+@router.get("")
 def get_payments(current_user: dict = Depends(get_current_user)):
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -24,11 +25,33 @@ def get_payments(current_user: dict = Depends(get_current_user)):
         LEFT JOIN bookings bk ON p.booking_id = bk.id
         LEFT JOIN clients c ON p.client_id = c.id
         LEFT JOIN users u ON p.registered_by_user_id = u.id
+        WHERE (? != 'agente' OR EXISTS (
+            SELECT 1 FROM booking_sellers bs WHERE bs.booking_id = p.booking_id AND bs.user_id = ?
+        ))
         ORDER BY p.id DESC;
-    """)
-    payments = cursor.fetchall()
+    """, (current_user.get("role"), current_user.get("id")))
+    payments = [dict(payment, record_type="Cliente") for payment in cursor.fetchall()]
+    if current_user.get("role") != "agente":
+        cursor.execute("""
+            SELECT 'PROV-' || printf('%06d', spp.id) as payment_number,
+                   'proveedor-' || spp.id as id, spp.id as supplier_payment_id,
+                   sp.id as payable_id, sp.booking_id, bk.booking_number,
+                   NULL as client_id, s.name as client_name, s.name as supplier_name,
+                   -spp.amount as amount, spp.payment_date, spp.payment_method,
+                   'Egreso proveedor' as payment_type, spp.reference as reference_code,
+                   spp.notes, spp.registered_by_user_id,
+                   u.full_name as registered_by_user_name, spp.created_at,
+                   'Proveedor' as record_type
+            FROM supplier_payments spp
+            JOIN supplier_payables sp ON sp.id = spp.payable_id
+            JOIN suppliers s ON s.id = sp.supplier_id
+            LEFT JOIN bookings bk ON bk.id = sp.booking_id
+            LEFT JOIN users u ON u.id = spp.registered_by_user_id
+            ORDER BY spp.id DESC;
+        """)
+        payments.extend(dict(payment) for payment in cursor.fetchall())
     conn.close()
-    return [dict(p) for p in payments]
+    return sorted(payments, key=lambda payment: (payment.get("created_at") or "", payment["payment_number"]), reverse=True)
 
 @router.get("/{payment_id}")
 def get_payment_receipt(payment_id: int, current_user: dict = Depends(get_current_user)):
@@ -43,8 +66,11 @@ def get_payment_receipt(payment_id: int, current_user: dict = Depends(get_curren
         LEFT JOIN bookings bk ON p.booking_id = bk.id
         LEFT JOIN clients c ON p.client_id = c.id
         LEFT JOIN users u ON p.registered_by_user_id = u.id
-        WHERE p.id = ?;
-    """, (payment_id,))
+        WHERE p.id = ?
+          AND (? != 'agente' OR EXISTS (
+              SELECT 1 FROM booking_sellers bs WHERE bs.booking_id = p.booking_id AND bs.user_id = ?
+          ));
+    """, (payment_id, current_user.get("role"), current_user.get("id")))
     payment = cursor.fetchone()
     conn.close()
     if not payment:
@@ -63,6 +89,7 @@ def register_payment(payload: PaymentCreate, current_user: dict = Depends(get_cu
     if not booking:
         conn.close()
         raise HTTPException(status_code=404, detail="Reserva no encontrada")
+    require_sales_assignment(cursor, "booking", payload.booking_id, current_user)
 
     if payload.amount <= 0:
         conn.close()
@@ -75,18 +102,18 @@ def register_payment(payload: PaymentCreate, current_user: dict = Depends(get_cu
 
     payment_number = generate_payment_number(conn)
     user_id = current_user.get("id", 1)
-    client_id = booking["client_id"]
+    client_id = payload.client_id or booking["client_id"]
 
     new_paid = booking["paid_amount"] + payload.amount
     new_balance = max(0.0, booking["total_amount"] - new_paid)
     payment_type = "Total" if new_balance <= 0.01 else "Parcial"
 
     cursor.execute("""
-        INSERT INTO payments (payment_number, booking_id, client_id, amount, payment_date, payment_method, payment_type, reference_code, notes, registered_by_user_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+        INSERT INTO payments (payment_number, booking_id, client_id, amount, payment_date, payment_method, concept, payment_type, reference_code, notes, registered_by_user_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
     """, (
         payment_number, payload.booking_id, client_id, payload.amount,
-        payload.payment_date, payload.payment_method, payment_type,
+        payload.payment_date, payload.payment_method, payload.concept or "", payment_type,
         payload.reference_code or "", payload.notes or "", user_id
     ))
     payment_id = cursor.lastrowid
@@ -113,8 +140,8 @@ def register_payment(payload: PaymentCreate, current_user: dict = Depends(get_cu
 
 @router.delete("/{payment_id}")
 def delete_payment(payment_id: int, current_user: dict = Depends(get_current_user)):
-    if current_user.get("role") not in ["admin", "contador"]:
-        raise HTTPException(status_code=403, detail="Se requieren permisos de administrador o contador para anular pagos")
+    if current_user.get("role") not in ["admin", "ventas"]:
+        raise HTTPException(status_code=403, detail="Se requieren permisos de administrador o ventas para anular pagos")
 
     conn = get_db_connection()
     cursor = conn.cursor()

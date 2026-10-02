@@ -19,6 +19,22 @@ class SupplierPayableCreate(BaseModel):
     issue_date: str
     due_date: str
     notes: Optional[str] = ""
+    booking_id: Optional[int] = None
+    budget_id: Optional[int] = None
+
+
+class SupplierExpenseCreate(BaseModel):
+    supplier_id: int
+    concept: str = Field(min_length=1, max_length=200)
+    invoice_number: Optional[str] = ""
+    currency: str = "USD"
+    amount: float = Field(gt=0)
+    payment_date: str
+    payment_method: str = Field(min_length=1, max_length=80)
+    reference: Optional[str] = ""
+    notes: Optional[str] = ""
+    booking_id: Optional[int] = None
+    budget_id: Optional[int] = None
 
 
 class SupplierPaymentCreate(BaseModel):
@@ -30,8 +46,25 @@ class SupplierPaymentCreate(BaseModel):
 
 
 def _require_finance_role(user: dict) -> None:
-    if user.get("role") not in ["admin", "contador"]:
+    if user.get("role") not in ["admin", "ventas", "administrativa"]:
         raise HTTPException(status_code=403, detail="Solo administración o contabilidad puede gestionar pagos a proveedores")
+
+
+def _validate_payable_link(cursor, booking_id: Optional[int], budget_id: Optional[int]):
+    if booking_id is not None:
+        cursor.execute("SELECT budget_id FROM bookings WHERE id = ?;", (booking_id,))
+        booking = cursor.fetchone()
+        if not booking:
+            raise HTTPException(status_code=404, detail="Reserva no encontrada")
+        linked_budget_id = booking["budget_id"]
+        if budget_id is not None and linked_budget_id is not None and budget_id != linked_budget_id:
+            raise HTTPException(status_code=400, detail="El presupuesto no corresponde a la reserva seleccionada")
+        budget_id = budget_id or linked_budget_id
+    if budget_id is not None:
+        cursor.execute("SELECT id FROM budgets WHERE id = ?;", (budget_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Presupuesto no encontrado")
+    return booking_id, budget_id
 
 
 def _validate_iso_date(value: str, label: str) -> date:
@@ -57,11 +90,16 @@ def _status_for(balance: float, due_date: str, today: date) -> str:
 def _load_payables(cursor, today: date):
     cursor.execute("""
         SELECT sp.*, s.name as supplier_name, s.category as supplier_category,
+             bk.booking_number,
+             COALESCE(sp.budget_id, bk.budget_id) as related_budget_id,
+             b.budget_number,
                COALESCE(SUM(spp.amount), 0) as paid_amount,
                COUNT(spp.id) as payment_count,
                MAX(spp.payment_date) as last_payment_date
         FROM supplier_payables sp
         JOIN suppliers s ON s.id = sp.supplier_id
+        LEFT JOIN bookings bk ON bk.id = sp.booking_id
+        LEFT JOIN budgets b ON b.id = COALESCE(sp.budget_id, bk.budget_id)
         LEFT JOIN supplier_payments spp ON spp.payable_id = sp.id
         GROUP BY sp.id
         ORDER BY sp.due_date ASC, sp.id DESC;
@@ -78,6 +116,7 @@ def _load_payables(cursor, today: date):
 
 @router.get("/summary")
 def get_supplier_payables_summary(current_user: dict = Depends(get_current_user)):
+    _require_finance_role(current_user)
     conn = get_db_connection()
     try:
         items = _load_payables(conn.cursor(), date.today())
@@ -119,6 +158,7 @@ def get_supplier_payables_summary(current_user: dict = Depends(get_current_user)
 
 @router.get("")
 def get_supplier_payables(current_user: dict = Depends(get_current_user)):
+    _require_finance_role(current_user)
     conn = get_db_connection()
     try:
         return _load_payables(conn.cursor(), date.today())
@@ -128,6 +168,7 @@ def get_supplier_payables(current_user: dict = Depends(get_current_user)):
 
 @router.get("/{payable_id}")
 def get_supplier_payable(payable_id: int, current_user: dict = Depends(get_current_user)):
+    _require_finance_role(current_user)
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -162,20 +203,68 @@ def create_supplier_payable(payload: SupplierPayableCreate, current_user: dict =
         cursor.execute("SELECT id FROM suppliers WHERE id = ?;", (payload.supplier_id,))
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+        booking_id, budget_id = _validate_payable_link(cursor, payload.booking_id, payload.budget_id)
         cursor.execute("""
             INSERT INTO supplier_payables
-                (supplier_id, concept, invoice_number, currency, total_amount, issue_date, due_date, notes, created_by_user_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+                (supplier_id, concept, invoice_number, currency, total_amount, issue_date, due_date, notes,
+                 created_by_user_id, booking_id, budget_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
         """, (
             payload.supplier_id, payload.concept.strip(), payload.invoice_number or "",
             payload.currency or "USD", payload.total_amount, issue_date.isoformat(), due_date.isoformat(),
-            payload.notes or "", current_user.get("id"),
+            payload.notes or "", current_user.get("id"), booking_id, budget_id,
         ))
         payable_id = cursor.lastrowid
         conn.commit()
         item = next(row for row in _load_payables(cursor, date.today()) if row["id"] == payable_id)
         item["payments"] = []
         return item
+    finally:
+        conn.close()
+
+
+@router.post("/expenses")
+def create_supplier_expense(payload: SupplierExpenseCreate, current_user: dict = Depends(get_current_user)):
+    _require_finance_role(current_user)
+    payment_date = _validate_iso_date(payload.payment_date, "pago")
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM suppliers WHERE id = ?;", (payload.supplier_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+        booking_id, budget_id = _validate_payable_link(cursor, payload.booking_id, payload.budget_id)
+        cursor.execute("""
+            INSERT INTO supplier_payables
+                (supplier_id, concept, invoice_number, currency, total_amount, issue_date, due_date, notes,
+                 created_by_user_id, booking_id, budget_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+        """, (
+            payload.supplier_id, payload.concept.strip(), payload.invoice_number or "", payload.currency or "USD",
+            payload.amount, payment_date.isoformat(), payment_date.isoformat(), payload.notes or "",
+            current_user.get("id"), booking_id, budget_id,
+        ))
+        payable_id = cursor.lastrowid
+        cursor.execute("""
+            INSERT INTO supplier_payments
+                (payable_id, amount, payment_date, payment_method, reference, notes, registered_by_user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?);
+        """, (
+            payable_id, payload.amount, payment_date.isoformat(), payload.payment_method,
+            payload.reference or "", payload.notes or "", current_user.get("id"),
+        ))
+        payment_id = cursor.lastrowid
+        conn.commit()
+        payable = next(item for item in _load_payables(cursor, date.today()) if item["id"] == payable_id)
+        payable["payments"] = [{
+            "id": payment_id,
+            "amount": payload.amount,
+            "payment_date": payment_date.isoformat(),
+            "payment_method": payload.payment_method,
+            "reference": payload.reference or "",
+            "notes": payload.notes or "",
+        }]
+        return payable
     finally:
         conn.close()
 

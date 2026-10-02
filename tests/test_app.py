@@ -52,6 +52,9 @@ class TestTravelAgencyApp(unittest.TestCase):
         new_client = {
             "name": "Juan Pérez Test",
             "document_id": "DNI 40.111.222",
+            "birth_date": "1990-04-15",
+            "passport_number": "AAL987654",
+            "passport_expiry": "2032-05-20",
             "email": "juan.perez@test.com",
             "phone": "+54 9 11 5555-4444",
             "address": "Calle Falsa 123",
@@ -61,12 +64,34 @@ class TestTravelAgencyApp(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         c_data = res.json()
         self.assertEqual(c_data["name"], "Juan Pérez Test")
+        self.assertEqual(c_data["birth_date"], "1990-04-15")
+        self.assertEqual(c_data["passport_number"], "AAL987654")
+        self.assertEqual(c_data["passport_expiry"], "2032-05-20")
 
     def test_04_suppliers(self):
         response = self.client.get("/api/suppliers")
         self.assertEqual(response.status_code, 200)
         suppliers = response.json()
         self.assertGreaterEqual(len(suppliers), 1)
+
+        # Create supplier with cuit, address and notes
+        new_supplier = {
+            "name": "Hotel Test Plaza",
+            "cuit": "30-99887766-5",
+            "category": "Hotel",
+            "contact_name": "Carlos Gomez",
+            "phone": "+54 11 4433-2211",
+            "email": "contacto@hoteltest.com",
+            "address": "Av. Libertador 4500, CABA",
+            "notes": "Tarifas corporativas acordadas"
+        }
+        res = self.client.post("/api/suppliers", json=new_supplier)
+        self.assertEqual(res.status_code, 200)
+        s_data = res.json()
+        self.assertEqual(s_data["name"], "Hotel Test Plaza")
+        self.assertEqual(s_data["cuit"], "30-99887766-5")
+        self.assertEqual(s_data["address"], "Av. Libertador 4500, CABA")
+        self.assertEqual(s_data["notes"], "Tarifas corporativas acordadas")
 
     def test_05_budgets_and_conversion(self):
         # Create budget
@@ -103,6 +128,7 @@ class TestTravelAgencyApp(unittest.TestCase):
         b_data = res.json()
         self.assertEqual(b_data["total_cost"], 1300.0)
         self.assertEqual(b_data["total_amount"], 1800.0)
+        self.assertTrue(b_data["seller_ids"])
 
         budget_id = b_data["id"]
 
@@ -113,6 +139,10 @@ class TestTravelAgencyApp(unittest.TestCase):
         self.assertIn("booking_id", conv_data)
         booking_id = conv_data["booking_id"]
 
+        locked_update = self.client.put(f"/api/budgets/{budget_id}", json=budget_payload)
+        self.assertEqual(locked_update.status_code, 409)
+        self.assertEqual(self.client.delete(f"/api/budgets/{budget_id}").status_code, 409)
+
         # Check booking total and balance
         bk_res = self.client.get(f"/api/bookings/{booking_id}")
         self.assertEqual(bk_res.status_code, 200)
@@ -120,6 +150,16 @@ class TestTravelAgencyApp(unittest.TestCase):
         self.assertEqual(bk_data["total_amount"], 1800.0)
         self.assertEqual(bk_data["paid_amount"], 0.0)
         self.assertEqual(bk_data["balance_due"], 1800.0)
+        self.assertEqual(bk_data["seller_ids"], b_data["seller_ids"])
+        self.assertEqual(len(bk_data["items"]), 2)
+        self.assertEqual(bk_data["items"][0]["description"], "Vuelo BsAs - Bariloche")
+        booking_update = self.client.put(f"/api/bookings/{conv_data['booking_id']}", json={
+            "client_id": 1,
+            "title": "No debe modificarse",
+            "destination": "Prueba",
+            "total_amount": 10,
+        })
+        self.assertEqual(booking_update.status_code, 409)
 
     def test_06_payments_partial_and_total(self):
         # Get active booking
@@ -147,7 +187,7 @@ class TestTravelAgencyApp(unittest.TestCase):
         self.assertEqual(updated_bk["paid_amount"], booking["paid_amount"] + 500.0)
         self.assertEqual(updated_bk["balance_due"], initial_balance - 500.0)
 
-    def test_07_profits_and_partial_distributions(self):
+    def test_07_profit_summary_without_commission_workflow(self):
         budget_payload = {
             "client_id": 1,
             "title": "Prueba de distribución parcial",
@@ -169,42 +209,11 @@ class TestTravelAgencyApp(unittest.TestCase):
         summary = self.client.get("/api/profits/summary")
         self.assertEqual(summary.status_code, 200)
         budget_profit = next(b for b in summary.json()["budgets"] if b["id"] == budget_id)
-        self.assertEqual(budget_profit["gross_profit"], 500.0)
-        self.assertEqual(budget_profit["pending_commissions"], 500.0)
-
-        first_payment = self.client.post("/api/profits/commissions", json={
-            "profit_id": budget_profit["profit_id"],
-            "user_id": 2,
-            "amount": 125.0,
-            "payment_date": "2026-09-28",
-            "payment_method": "Transferencia",
-            "notes": "Primer pago parcial"
-        })
-        self.assertEqual(first_payment.status_code, 200)
-
-        second_payment = self.client.post("/api/profits/commissions", json={
-            "profit_id": budget_profit["profit_id"],
-            "user_id": 2,
-            "amount": 375.0,
-            "payment_date": "2026-09-28",
-            "payment_method": "Efectivo",
-            "notes": "Liquidación del saldo"
-        })
-        self.assertEqual(second_payment.status_code, 200)
-
-        overpayment = self.client.post("/api/profits/commissions", json={
-            "profit_id": budget_profit["profit_id"],
-            "user_id": 2,
-            "amount": 0.01,
-            "payment_date": "2026-09-28",
-            "payment_method": "Efectivo"
-        })
-        self.assertEqual(overpayment.status_code, 400)
-
-        updated = self.client.get("/api/profits/summary").json()
-        updated_profit = next(b for b in updated["budgets"] if b["id"] == budget_id)
-        self.assertEqual(updated_profit["paid_commissions"], 500.0)
-        self.assertEqual(updated_profit["pending_commissions"], 0.0)
+        self.assertEqual(budget_profit["gross_profit"], 750.0)
+        self.assertEqual(budget_profit["supplier_payments"], 0.0)
+        self.assertEqual(budget_profit["net_profit"], 750.0)
+        self.assertEqual(budget_profit["supplier_payment_details"], [])
+        self.assertEqual(self.client.post("/api/profits/commissions", json={}).status_code, 404)
 
     def test_08_dashboard_metrics(self):
         res = self.client.get("/api/reports/dashboard")
@@ -240,12 +249,14 @@ class TestTravelAgencyApp(unittest.TestCase):
         self.assertEqual(latest["method"], "POST")
         self.assertEqual(latest["status_code"], 200)
         self.assertEqual(latest["username"], "admin")
+        self.assertIn("Cliente Bitácora Test", latest["details"])
 
         logout = self.client.post("/api/users/logout")
         self.assertEqual(logout.status_code, 200)
         audit_final = self.client.get("/api/audit")
         self.assertEqual(audit_final.status_code, 200)
         self.assertEqual(audit_final.json()[0]["action"], "Cierre de sesión")
+        self.assertNotIn("password", " ".join(event["details"] for event in audit_final.json()).lower())
 
     def test_10_supplier_payable_partial_payment_and_due_reminder(self):
         today = date.today()
@@ -347,7 +358,8 @@ class TestTravelAgencyApp(unittest.TestCase):
         self.assertEqual(reverted.status_code, 200)
         self.assertTrue(reverted.json()["payments_preserved"])
 
-        self.assertEqual(self.client.get("/api/bookings").json(), [])
+        visible_bookings = self.client.get("/api/bookings").json()
+        self.assertFalse(any(booking["id"] == booking_id for booking in visible_bookings))
         editable_budget = self.client.get(f"/api/budgets/{budget_id}")
         self.assertEqual(editable_budget.status_code, 200)
         edited_payload = {
@@ -375,6 +387,229 @@ class TestTravelAgencyApp(unittest.TestCase):
         self.assertEqual(restored.json()["payments"][0]["reference_code"], "PRESERVE-TEST")
         self.assertEqual(restored.json()["paid_amount"], 50.0)
         self.assertEqual(restored.json()["balance_due"], 250.0)
+
+    def test_13_role_access_for_sales_and_administrative(self):
+        tokens = {}
+        for role in ("agente", "administrativa"):
+            username = f"role_test_{role}"
+            created = self.client.post("/api/users", json={
+                "username": username,
+                "full_name": f"Usuario {role}",
+                "email": f"{username}@example.com",
+                "password": "test-password-123",
+                "role": role,
+                "is_active": True,
+            })
+            self.assertEqual(created.status_code, 200, created.text)
+            logged_in = self.client.post("/api/users/login", json={
+                "username": username,
+                "password": "test-password-123",
+            })
+            self.assertEqual(logged_in.status_code, 200, logged_in.text)
+            tokens[role] = {"Authorization": f"Bearer {logged_in.json()['access_token']}"}
+
+        for role in ("agente", "administrativa"):
+            headers = tokens[role]
+            self.assertEqual(self.client.get("/api/profits/summary", headers=headers).status_code, 403)
+            self.assertEqual(self.client.get("/api/profits/commissions", headers=headers).status_code, 404)
+            self.assertEqual(self.client.get("/api/audit", headers=headers).status_code, 403)
+            self.assertEqual(self.client.get("/api/reports/dashboard", headers=headers).status_code, 200)
+
+        self.assertEqual(self.client.get("/api/supplier-payables/summary", headers=tokens["agente"]).status_code, 403)
+        self.assertEqual(self.client.get("/api/supplier-payables/summary", headers=tokens["administrativa"]).status_code, 200)
+        ventas_login = self.client.post("/api/users/login", json={"username": "ventas", "password": "ventas123"})
+        self.assertEqual(ventas_login.status_code, 200, ventas_login.text)
+        ventas_headers = {"Authorization": f"Bearer {ventas_login.json()['access_token']}"}
+        self.assertEqual(self.client.get("/api/profits/summary", headers=ventas_headers).status_code, 200)
+        self.assertEqual(self.client.get("/api/audit", headers=ventas_headers).status_code, 403)
+        self.assertEqual(self.client.get("/api/supplier-payables/summary", headers=ventas_headers).status_code, 200)
+
+    def test_14_supplier_expense_is_negative_and_reduces_booking_cost_balance(self):
+        before_supplier_payments = self.client.get("/api/profits/summary").json()["summary"]["supplier_payments_by_currency"].get("USD", 0)
+        budget = self.client.post("/api/budgets", json={
+            "client_id": 1,
+            "title": "Costo asociado a reserva",
+            "destination": "Prueba",
+            "currency": "USD",
+            "items": [{
+                "service_type": "Hotel",
+                "description": "Costo hotel",
+                "supplier_id": 1,
+                "cost_price": 100,
+                "sale_price": 160,
+                "quantity": 1,
+            }],
+        })
+        self.assertEqual(budget.status_code, 200, budget.text)
+        budget_id = budget.json()["id"]
+        booking = self.client.post(f"/api/budgets/{budget_id}/convert-to-booking")
+        self.assertEqual(booking.status_code, 200, booking.text)
+        booking_id = booking.json()["booking_id"]
+
+        customer_payment = self.client.post("/api/payments", json={
+            "booking_id": booking_id,
+            "amount": 25,
+            "payment_date": date.today().isoformat(),
+            "payment_method": "Transferencia",
+            "reference_code": "CLIENT-IN-14",
+        })
+        self.assertEqual(customer_payment.status_code, 200, customer_payment.text)
+
+        expense = self.client.post("/api/supplier-payables/expenses", json={
+            "supplier_id": 1,
+            "concept": "Pago hotel de reserva",
+            "currency": "USD",
+            "amount": 35,
+            "payment_date": date.today().isoformat(),
+            "payment_method": "Transferencia",
+            "booking_id": booking_id,
+        })
+        self.assertEqual(expense.status_code, 200, expense.text)
+        self.assertEqual(expense.json()["booking_id"], booking_id)
+
+        detail = self.client.get(f"/api/bookings/{booking_id}").json()
+        self.assertEqual(detail["budget_number"], budget.json()["budget_number"])
+        self.assertEqual(detail["total_cost"], 100.0)
+        self.assertEqual(detail["supplier_paid_amount"], 35.0)
+        self.assertEqual(detail["cost_balance"], 65.0)
+        booking_expense = next(payment for payment in detail["payments"] if payment.get("record_type") == "Proveedor")
+        self.assertEqual(booking_expense["amount"], -35.0)
+        listed_booking = next(item for item in self.client.get("/api/bookings").json() if item["id"] == booking_id)
+        self.assertEqual(listed_booking["cost_balance"], 65.0)
+        self.assertEqual(self.client.get(f"/api/budgets/{budget_id}").json()["booking_number"], booking.json()["booking_number"])
+
+        supplier_movement = next(payment for payment in self.client.get("/api/payments").json() if payment.get("payable_id") == expense.json()["id"])
+        self.assertEqual(supplier_movement["amount"], -35.0)
+        profit_summary = self.client.get("/api/profits/summary").json()["summary"]
+        self.assertEqual(profit_summary["supplier_payments_by_currency"]["USD"] - before_supplier_payments, 35.0)
+        budget_profit = next(item for item in self.client.get("/api/profits/summary").json()["budgets"] if item["id"] == budget_id)
+        self.assertEqual(budget_profit["supplier_payments"], 35.0)
+        self.assertEqual(budget_profit["gross_profit"], 125.0)
+        self.assertEqual(budget_profit["net_profit"], 125.0)
+        self.assertEqual(budget_profit["supplier_payment_details"][0]["supplier_name"], "Aerolíneas Argentinas")
+        self.assertEqual(budget_profit["supplier_payment_details"][0]["amount"], 35.0)
+        self.assertEqual(budget_profit["customer_payment_details"][0]["payment_number"], customer_payment.json()["payment_number"])
+        self.assertEqual(budget_profit["customer_payment_details"][0]["amount"], 25.0)
+
+        direct_booking = self.client.post("/api/bookings", json={
+            "client_id": 1,
+            "title": "Reserva sin presupuesto",
+            "destination": "Prueba directa",
+            "currency": "USD",
+            "total_amount": 80,
+        })
+        self.assertEqual(direct_booking.status_code, 200, direct_booking.text)
+        direct_id = direct_booking.json()["id"]
+        direct_expense = self.client.post("/api/supplier-payables/expenses", json={
+            "supplier_id": 1,
+            "concept": "Gasto sin presupuesto",
+            "currency": "USD",
+            "amount": 20,
+            "payment_date": date.today().isoformat(),
+            "payment_method": "Efectivo",
+            "booking_id": direct_id,
+        })
+        self.assertEqual(direct_expense.status_code, 200, direct_expense.text)
+        direct_detail = self.client.get(f"/api/bookings/{direct_id}").json()
+        self.assertIsNone(direct_detail["budget_number"])
+        self.assertEqual(direct_detail["cost_balance"], -20.0)
+        direct_list_item = next(item for item in self.client.get("/api/bookings").json() if item["id"] == direct_id)
+        self.assertEqual(direct_list_item["cost_balance"], -20.0)
+
+    def test_15_agents_only_see_assigned_budgets_bookings_and_payments(self):
+        ventas = next(user for user in self.client.get("/api/users").json() if user["role"] == "ventas")
+        agent_name = "asignado_agente_test"
+        agent_create = self.client.post("/api/users", json={
+            "username": agent_name,
+            "full_name": "Agente Asignado Test",
+            "email": "asignado@example.com",
+            "password": "test-password-123",
+            "role": "agente",
+            "is_active": True,
+        })
+        self.assertEqual(agent_create.status_code, 200, agent_create.text)
+        agent_id = agent_create.json()["id"]
+
+        def create_assigned_budget(title, seller_ids):
+            created = self.client.post("/api/budgets", json={
+                "client_id": 1,
+                "title": title,
+                "destination": "Destino asignado",
+                "status": "Aprobado",
+                "seller_ids": seller_ids,
+                "items": [{
+                    "service_type": "Otro",
+                    "description": title,
+                    "cost_price": 30,
+                    "sale_price": 50,
+                    "quantity": 1,
+                }],
+            })
+            self.assertEqual(created.status_code, 200, created.text)
+            converted = self.client.post(f"/api/budgets/{created.json()['id']}/convert-to-booking")
+            self.assertEqual(converted.status_code, 200, converted.text)
+            return created.json(), converted.json()["booking_id"]
+
+        own_budget, own_booking_id = create_assigned_budget("Presupuesto del agente", [agent_id, ventas["id"]])
+        other_budget, other_booking_id = create_assigned_budget("Presupuesto de ventas", [ventas["id"]])
+        self.assertCountEqual(own_budget["seller_ids"], [agent_id, ventas["id"]])
+        self.assertCountEqual(own_budget["seller_names"], ["Agente Asignado Test", ventas["full_name"]])
+        self.assertEqual(self.client.delete(f"/api/users/{agent_id}").status_code, 400)
+        self.assertEqual(self.client.put(f"/api/users/{agent_id}", json={"role": "admin"}).status_code, 400)
+        for booking_id, amount in ((own_booking_id, 10), (other_booking_id, 20)):
+            payment = self.client.post("/api/payments", json={
+                "booking_id": booking_id,
+                "amount": amount,
+                "payment_date": date.today().isoformat(),
+                "payment_method": "Transferencia",
+            })
+            self.assertEqual(payment.status_code, 200, payment.text)
+
+        login = self.client.post("/api/users/login", json={
+            "username": agent_name,
+            "password": "test-password-123",
+        })
+        self.assertEqual(login.status_code, 200, login.text)
+        agent_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+        visible_budgets = self.client.get("/api/budgets", headers=agent_headers).json()
+        self.assertIn(own_budget["id"], [item["id"] for item in visible_budgets])
+        self.assertNotIn(other_budget["id"], [item["id"] for item in visible_budgets])
+        self.assertEqual(self.client.get(f"/api/budgets/{other_budget['id']}", headers=agent_headers).status_code, 404)
+
+        visible_bookings = self.client.get("/api/bookings", headers=agent_headers).json()
+        self.assertEqual([item["id"] for item in visible_bookings], [own_booking_id])
+        self.assertEqual(self.client.get(f"/api/bookings/{other_booking_id}", headers=agent_headers).status_code, 404)
+        visible_payments = self.client.get("/api/payments", headers=agent_headers).json()
+        self.assertEqual({item["booking_number"] for item in visible_payments}, {visible_bookings[0]["booking_number"]})
+        dashboard = self.client.get("/api/reports/dashboard", headers=agent_headers).json()
+        self.assertEqual(dashboard["total_bookings"], 1)
+        self.assertTrue(all(item["booking_number"] == visible_bookings[0]["booking_number"] for item in dashboard["recent_payments"]))
+
+    def test_16_budget_multiple_clients(self):
+        created = self.client.post("/api/budgets", json={
+            "client_ids": [1, 2],
+            "title": "Viaje grupal 2 clientes",
+            "destination": "Bariloche",
+            "status": "Borrador",
+            "items": [{
+                "service_type": "Hotel",
+                "description": "Hotel grupal",
+                "cost_price": 500,
+                "sale_price": 800,
+                "quantity": 1,
+            }],
+        })
+        self.assertEqual(created.status_code, 200, created.text)
+        budget = created.json()
+        self.assertCountEqual(budget["client_ids"], [1, 2])
+        self.assertEqual(len(budget["client_names"]), 2)
+
+        converted = self.client.post(f"/api/budgets/{budget['id']}/convert-to-booking")
+        self.assertEqual(converted.status_code, 200, converted.text)
+        booking = self.client.get(f"/api/bookings/{converted.json()['booking_id']}").json()
+        self.assertCountEqual(booking["client_ids"], [1, 2])
+        self.assertEqual(len(booking["client_names"]), 2)
 
 if __name__ == "__main__":
     unittest.main()

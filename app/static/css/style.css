@@ -30,15 +30,35 @@ body {
     background: #94a3b8;
 }
 
-/* Table styling */
+/* Table styling with responsive horizontal scroll */
 .table-container {
     overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
     border-radius: 0.75rem;
     border: 1px solid #e2e8f0;
 }
 
+/* Touch-friendly buttons and inputs */
+@media (max-width: 768px) {
+    input, select, textarea, button {
+        font-size: 16px !important; /* Prevents auto-zoom on iOS */
+    }
+    .table-container table {
+        min-width: 650px;
+    }
+}
+
 /* Print optimizations for receipts & budgets */
 @media print {
+    @page {
+        margin: 0;
+        size: auto;
+    }
+    html, body {
+        margin: 0 !important;
+        padding: 0 !important;
+        background: white !important;
+    }
     body * {
         visibility: hidden;
     }
@@ -50,9 +70,15 @@ body {
         left: 0;
         top: 0;
         width: 100%;
-        padding: 20px;
+        max-width: 100%;
+        margin: 0;
+        padding: 24px;
         background: white;
         color: black;
+        box-shadow: none !important;
+        border: none !important;
+        page-break-after: avoid;
+        page-break-inside: avoid;
     }
     .no-print {
         display: none !important;

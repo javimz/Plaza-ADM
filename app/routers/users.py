@@ -6,6 +6,16 @@ from app.schemas import LoginRequest, TokenResponse, UserCreate, UserOut, UserUp
 from app.auth import verify_password, hash_password, create_access_token, decode_access_token
 
 router = APIRouter(prefix="/api/users", tags=["Users"])
+VALID_ROLES = {"admin", "ventas", "agente", "administrativa"}
+SELLER_ROLES = {"agente", "ventas"}
+
+
+def _has_sales_assignments(cursor, user_id: int) -> bool:
+    cursor.execute("""
+        SELECT EXISTS(SELECT 1 FROM budget_sellers WHERE user_id = ?)
+            OR EXISTS(SELECT 1 FROM booking_sellers WHERE user_id = ?);
+    """, (user_id, user_id))
+    return bool(cursor.fetchone()[0])
 
 def get_current_user(authorization: Optional[str] = Header(None)):
     if not authorization or not authorization.startswith("Bearer "):
@@ -71,6 +81,8 @@ def get_users(current_user: dict = Depends(get_current_user)):
 def create_user(payload: UserCreate, current_user: dict = Depends(get_current_user)):
     if current_user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Se requieren permisos de administrador")
+    if payload.role not in VALID_ROLES:
+        raise HTTPException(status_code=400, detail="El rol seleccionado no es válido")
 
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -97,6 +109,8 @@ def create_user(payload: UserCreate, current_user: dict = Depends(get_current_us
 def update_user(user_id: int, payload: UserUpdate, current_user: dict = Depends(get_current_user)):
     if current_user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Se requieren permisos de administrador")
+    if payload.role is not None and payload.role not in VALID_ROLES:
+        raise HTTPException(status_code=400, detail="El rol seleccionado no es válido")
 
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -107,22 +121,32 @@ def update_user(user_id: int, payload: UserUpdate, current_user: dict = Depends(
         conn.close()
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
+    username = payload.username.strip() if payload.username is not None and payload.username.strip() else existing["username"]
+    if username != existing["username"]:
+        cursor.execute("SELECT id FROM users WHERE username = ? AND id != ?;", (username, user_id))
+        if cursor.fetchone():
+            conn.close()
+            raise HTTPException(status_code=400, detail="El nombre de usuario ya está en uso")
+
     full_name = payload.full_name if payload.full_name is not None else existing["full_name"]
     email = payload.email if payload.email is not None else existing["email"]
     role = payload.role if payload.role is not None else existing["role"]
     is_active = (1 if payload.is_active else 0) if payload.is_active is not None else existing["is_active"]
+    if (role not in SELLER_ROLES or not is_active) and _has_sales_assignments(cursor, user_id):
+        conn.close()
+        raise HTTPException(status_code=400, detail="Reasigne sus presupuestos y reservas antes de desactivar o cambiar el rol de este vendedor")
 
     if payload.password and payload.password.strip():
         hashed = hash_password(payload.password)
         cursor.execute("""
-            UPDATE users SET full_name = ?, email = ?, role = ?, is_active = ?, password_hash = ?
+            UPDATE users SET username = ?, full_name = ?, email = ?, role = ?, is_active = ?, password_hash = ?
             WHERE id = ?;
-        """, (full_name, email, role, is_active, hashed, user_id))
+        """, (username, full_name, email, role, is_active, hashed, user_id))
     else:
         cursor.execute("""
-            UPDATE users SET full_name = ?, email = ?, role = ?, is_active = ?
+            UPDATE users SET username = ?, full_name = ?, email = ?, role = ?, is_active = ?
             WHERE id = ?;
-        """, (full_name, email, role, is_active, user_id))
+        """, (username, full_name, email, role, is_active, user_id))
 
     conn.commit()
 
@@ -141,6 +165,9 @@ def delete_user(user_id: int, current_user: dict = Depends(get_current_user)):
 
     conn = get_db_connection()
     cursor = conn.cursor()
+    if _has_sales_assignments(cursor, user_id):
+        conn.close()
+        raise HTTPException(status_code=400, detail="Reasigne sus presupuestos y reservas antes de eliminar este vendedor")
     cursor.execute("DELETE FROM users WHERE id = ?;", (user_id,))
     conn.commit()
     conn.close()

@@ -33,6 +33,9 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
         document_id TEXT NOT NULL,
+        birth_date TEXT,
+        passport_number TEXT,
+        passport_expiry TEXT,
         email TEXT NOT NULL,
         phone TEXT NOT NULL,
         address TEXT,
@@ -46,10 +49,12 @@ def init_db():
     CREATE TABLE IF NOT EXISTS suppliers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
+        cuit TEXT,
         category TEXT NOT NULL,
         contact_name TEXT,
         phone TEXT,
         email TEXT,
+        address TEXT,
         notes TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
@@ -120,6 +125,47 @@ def init_db():
     );
     """)
 
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS budget_sellers (
+        budget_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        PRIMARY KEY (budget_id, user_id),
+        FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE,
+        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    """)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS booking_sellers (
+        booking_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        PRIMARY KEY (booking_id, user_id),
+        FOREIGN KEY(booking_id) REFERENCES bookings(id) ON DELETE CASCADE,
+        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    """)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS budget_clients (
+        budget_id INTEGER NOT NULL,
+        client_id INTEGER NOT NULL,
+        PRIMARY KEY (budget_id, client_id),
+        FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE,
+        FOREIGN KEY(client_id) REFERENCES clients(id) ON DELETE CASCADE
+    );
+    """)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS booking_clients (
+        booking_id INTEGER NOT NULL,
+        client_id INTEGER NOT NULL,
+        PRIMARY KEY (booking_id, client_id),
+        FOREIGN KEY(booking_id) REFERENCES bookings(id) ON DELETE CASCADE,
+        FOREIGN KEY(client_id) REFERENCES clients(id) ON DELETE CASCADE
+    );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_budget_clients_client ON budget_clients(client_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_booking_clients_client ON booking_clients(client_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_budget_sellers_user ON budget_sellers(user_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_booking_sellers_user ON booking_sellers(user_id);")
+
     # Table: payments
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS payments (
@@ -130,6 +176,7 @@ def init_db():
         amount REAL NOT NULL,
         payment_date TEXT NOT NULL,
         payment_method TEXT NOT NULL,
+        concept TEXT,
         payment_type TEXT NOT NULL DEFAULT 'Parcial',
         reference_code TEXT,
         notes TEXT,
@@ -154,11 +201,42 @@ def init_db():
         due_date TEXT NOT NULL,
         notes TEXT,
         created_by_user_id INTEGER,
+        booking_id INTEGER,
+        budget_id INTEGER,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(supplier_id) REFERENCES suppliers(id),
+        FOREIGN KEY(booking_id) REFERENCES bookings(id),
+        FOREIGN KEY(budget_id) REFERENCES budgets(id),
         FOREIGN KEY(created_by_user_id) REFERENCES users(id)
     );
     """)
+    cursor.execute("PRAGMA table_info(clients);")
+    client_columns = {row["name"] for row in cursor.fetchall()}
+    if "birth_date" not in client_columns:
+        cursor.execute("ALTER TABLE clients ADD COLUMN birth_date TEXT;")
+    if "passport_number" not in client_columns:
+        cursor.execute("ALTER TABLE clients ADD COLUMN passport_number TEXT;")
+    if "passport_expiry" not in client_columns:
+        cursor.execute("ALTER TABLE clients ADD COLUMN passport_expiry TEXT;")
+
+    cursor.execute("PRAGMA table_info(suppliers);")
+    supplier_columns = {row["name"] for row in cursor.fetchall()}
+    if "cuit" not in supplier_columns:
+        cursor.execute("ALTER TABLE suppliers ADD COLUMN cuit TEXT;")
+    if "address" not in supplier_columns:
+        cursor.execute("ALTER TABLE suppliers ADD COLUMN address TEXT;")
+
+    cursor.execute("PRAGMA table_info(payments);")
+    payment_columns = {row["name"] for row in cursor.fetchall()}
+    if "concept" not in payment_columns:
+        cursor.execute("ALTER TABLE payments ADD COLUMN concept TEXT;")
+
+    cursor.execute("PRAGMA table_info(supplier_payables);")
+    payable_columns = {row["name"] for row in cursor.fetchall()}
+    if "booking_id" not in payable_columns:
+        cursor.execute("ALTER TABLE supplier_payables ADD COLUMN booking_id INTEGER REFERENCES bookings(id);")
+    if "budget_id" not in payable_columns:
+        cursor.execute("ALTER TABLE supplier_payables ADD COLUMN budget_id INTEGER REFERENCES budgets(id);")
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS supplier_payments (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -175,6 +253,8 @@ def init_db():
     );
     """)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_supplier_payables_due_date ON supplier_payables(due_date);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_supplier_payables_booking ON supplier_payables(booking_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_supplier_payables_budget ON supplier_payables(budget_id);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_supplier_payments_payable ON supplier_payments(payable_id);")
 
     # Activity audit log (credentials and request payloads are never stored here)
@@ -201,6 +281,58 @@ def init_db():
     if cursor.fetchone()[0] == 0:
         seed_initial_data(conn)
 
+    cursor.execute("UPDATE users SET role = 'ventas' WHERE role = 'contador';")
+    cursor.execute("UPDATE activity_logs SET role = 'ventas' WHERE role = 'contador';")
+    cursor.execute("""
+        INSERT OR IGNORE INTO budget_sellers (budget_id, user_id)
+        SELECT b.id, b.user_id
+        FROM budgets b JOIN users u ON u.id = b.user_id
+        WHERE u.role IN ('agente', 'ventas');
+    """)
+    cursor.execute("""
+        INSERT OR IGNORE INTO budget_sellers (budget_id, user_id)
+        SELECT b.id, (
+            SELECT id FROM users
+            WHERE is_active = 1 AND role IN ('agente', 'ventas')
+            ORDER BY CASE role WHEN 'agente' THEN 0 ELSE 1 END, id
+            LIMIT 1
+        )
+        FROM budgets b
+        WHERE NOT EXISTS (SELECT 1 FROM budget_sellers bs WHERE bs.budget_id = b.id);
+    """)
+    cursor.execute("""
+        INSERT OR IGNORE INTO booking_sellers (booking_id, user_id)
+        SELECT bk.id, bs.user_id
+        FROM bookings bk JOIN budget_sellers bs ON bs.budget_id = bk.budget_id;
+    """)
+    cursor.execute("""
+        INSERT OR IGNORE INTO booking_sellers (booking_id, user_id)
+        SELECT bk.id, bk.user_id
+        FROM bookings bk JOIN users u ON u.id = bk.user_id
+        WHERE u.role IN ('agente', 'ventas')
+          AND NOT EXISTS (SELECT 1 FROM booking_sellers bs WHERE bs.booking_id = bk.id);
+    """)
+    cursor.execute("""
+        INSERT OR IGNORE INTO booking_sellers (booking_id, user_id)
+        SELECT bk.id, (
+            SELECT id FROM users
+            WHERE is_active = 1 AND role IN ('agente', 'ventas')
+            ORDER BY CASE role WHEN 'agente' THEN 0 ELSE 1 END, id
+            LIMIT 1
+        )
+        FROM bookings bk
+        WHERE NOT EXISTS (SELECT 1 FROM booking_sellers bs WHERE bs.booking_id = bk.id);
+    """)
+
+    cursor.execute("""
+        INSERT OR IGNORE INTO budget_clients (budget_id, client_id)
+        SELECT id, client_id FROM budgets WHERE client_id IS NOT NULL;
+    """)
+    cursor.execute("""
+        INSERT OR IGNORE INTO booking_clients (booking_id, client_id)
+        SELECT id, client_id FROM bookings WHERE client_id IS NOT NULL;
+    """)
+
     conn.close()
 
 def seed_initial_data(conn):
@@ -209,15 +341,15 @@ def seed_initial_data(conn):
     # Default Users
     admin_pw = hash_password("admin123")
     agente_pw = hash_password("agente123")
-    contador_pw = hash_password("contador123")
+    ventas_pw = hash_password("ventas123")
 
     cursor.execute("""
         INSERT INTO users (username, full_name, email, password_hash, role)
         VALUES 
         ('admin', 'Administrador Principal', 'admin@agenciaviajes.com', ?, 'admin'),
         ('agente', 'Laura Agente de Ventas', 'laura@agenciaviajes.com', ?, 'agente'),
-        ('contador', 'Carlos Contador', 'carlos@agenciaviajes.com', ?, 'contador');
-    """, (admin_pw, agente_pw, contador_pw))
+        ('ventas', 'Carlos Responsable de Ventas', 'ventas@agenciaviajes.com', ?, 'ventas');
+    """, (admin_pw, agente_pw, ventas_pw))
 
     # Default Clients
     cursor.execute("""

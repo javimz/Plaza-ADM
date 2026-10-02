@@ -12,8 +12,8 @@ def get_activity_logs(
     limit: int = Query(500, ge=1, le=1000),
     current_user: dict = Depends(get_current_user),
 ):
-    if current_user.get("role") not in ["admin", "contador"]:
-        raise HTTPException(status_code=403, detail="Solo administración y contabilidad pueden consultar la bitácora")
+    if current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Solo los administradores generales pueden consultar el log de actividad")
 
     conn = get_db_connection()
     try:
@@ -28,5 +28,21 @@ def get_activity_logs(
             (limit,),
         ).fetchall()
         return [dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
+@router.delete("")
+def clear_activity_logs(
+    current_user: dict = Depends(get_current_user),
+):
+    if current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Solo los administradores generales pueden vaciar el log de actividad")
+
+    conn = get_db_connection()
+    try:
+        conn.execute("DELETE FROM activity_logs;")
+        conn.commit()
+        return {"message": "Log de actividad vaciado correctamente."}
     finally:
         conn.close()

@@ -23,6 +23,7 @@ class UserCreate(UserBase):
     password: str
 
 class UserUpdate(BaseModel):
+    username: Optional[str] = None
     full_name: Optional[str] = None
     email: Optional[str] = None
     role: Optional[str] = None
@@ -37,6 +38,9 @@ class UserOut(UserBase):
 class ClientBase(BaseModel):
     name: str
     document_id: str
+    birth_date: Optional[str] = ""
+    passport_number: Optional[str] = ""
+    passport_expiry: Optional[str] = ""
     email: str
     phone: str
     address: Optional[str] = ""
@@ -52,10 +56,12 @@ class ClientOut(ClientBase):
 # Supplier Schemas
 class SupplierBase(BaseModel):
     name: str
+    cuit: Optional[str] = ""
     category: str
     contact_name: Optional[str] = ""
     phone: Optional[str] = ""
     email: Optional[str] = ""
+    address: Optional[str] = ""
     notes: Optional[str] = ""
 
 class SupplierCreate(SupplierBase):
@@ -85,7 +91,8 @@ class BudgetItemOut(BudgetItemBase):
 
 # Budget Schemas
 class BudgetBase(BaseModel):
-    client_id: int
+    client_id: Optional[int] = None
+    client_ids: Optional[List[int]] = None
     title: str
     destination: str
     start_date: Optional[str] = ""
@@ -94,6 +101,7 @@ class BudgetBase(BaseModel):
     exchange_rate: float = 1.0
     status: str = "Borrador"
     notes: Optional[str] = ""
+    seller_ids: Optional[List[int]] = None
 
 class BudgetCreate(BudgetBase):
     items: List[BudgetItemCreate] = []
@@ -101,6 +109,12 @@ class BudgetCreate(BudgetBase):
 class BudgetOut(BudgetBase):
     id: int
     budget_number: str
+    booking_id: Optional[int] = None
+    booking_number: Optional[str] = None
+    seller_ids: List[int] = []
+    seller_names: List[str] = []
+    client_ids: List[int] = []
+    client_names: List[str] = []
     user_id: int
     user_name: Optional[str] = None
     client_name: Optional[str] = None
@@ -111,7 +125,8 @@ class BudgetOut(BudgetBase):
 
 # Booking Schemas
 class BookingBase(BaseModel):
-    client_id: int
+    client_id: Optional[int] = None
+    client_ids: Optional[List[int]] = None
     title: str
     destination: str
     start_date: Optional[str] = ""
@@ -123,12 +138,18 @@ class BookingBase(BaseModel):
 
 class BookingCreate(BookingBase):
     budget_id: Optional[int] = None
+    seller_ids: Optional[List[int]] = None
 
 class BookingOut(BookingBase):
     id: int
     booking_number: str
     budget_id: Optional[int] = None
-    client_id: int
+    budget_number: Optional[str] = None
+    seller_ids: List[int] = []
+    seller_names: List[str] = []
+    client_id: Optional[int] = None
+    client_ids: List[int] = []
+    client_names: List[str] = []
     user_id: int
     client_name: Optional[str] = None
     user_name: Optional[str] = None
@@ -141,15 +162,21 @@ class BookingOut(BookingBase):
     total_amount: float
     paid_amount: float
     balance_due: float
+    total_cost: float = 0.0
+    supplier_paid_amount: float = 0.0
+    cost_balance: float = 0.0
+    items: List[BudgetItemOut] = []
     notes: Optional[str] = ""
     created_at: str
 
 # Payment Schemas
 class PaymentCreate(BaseModel):
     booking_id: int
+    client_id: Optional[int] = None
     amount: float
     payment_date: str
     payment_method: str
+    concept: Optional[str] = ""
     payment_type: str = "Parcial"  # Parcial or Total
     reference_code: Optional[str] = ""
     notes: Optional[str] = ""
@@ -164,6 +191,7 @@ class PaymentOut(BaseModel):
     amount: float
     payment_date: str
     payment_method: str
+    concept: Optional[str] = ""
     payment_type: str
     reference_code: Optional[str] = None
     notes: Optional[str] = None

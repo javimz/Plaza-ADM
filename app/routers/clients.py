@@ -31,9 +31,9 @@ def create_client(payload: ClientCreate, current_user: dict = Depends(get_curren
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT INTO clients (name, document_id, email, phone, address, notes)
-        VALUES (?, ?, ?, ?, ?, ?);
-    """, (payload.name, payload.document_id, payload.email, payload.phone, payload.address or "", payload.notes or ""))
+        INSERT INTO clients (name, document_id, birth_date, passport_number, passport_expiry, email, phone, address, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+    """, (payload.name, payload.document_id, payload.birth_date or "", payload.passport_number or "", payload.passport_expiry or "", payload.email, payload.phone, payload.address or "", payload.notes or ""))
     client_id = cursor.lastrowid
     conn.commit()
 
@@ -52,9 +52,9 @@ def update_client(client_id: int, payload: ClientCreate, current_user: dict = De
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
 
     cursor.execute("""
-        UPDATE clients SET name = ?, document_id = ?, email = ?, phone = ?, address = ?, notes = ?
+        UPDATE clients SET name = ?, document_id = ?, birth_date = ?, passport_number = ?, passport_expiry = ?, email = ?, phone = ?, address = ?, notes = ?
         WHERE id = ?;
-    """, (payload.name, payload.document_id, payload.email, payload.phone, payload.address or "", payload.notes or "", client_id))
+    """, (payload.name, payload.document_id, payload.birth_date or "", payload.passport_number or "", payload.passport_expiry or "", payload.email, payload.phone, payload.address or "", payload.notes or "", client_id))
     conn.commit()
 
     cursor.execute("SELECT * FROM clients WHERE id = ?;", (client_id,))
