@@ -28,6 +28,8 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('login-username').focus();
 });
 
+const API_BASE = window.location.pathname.startsWith('/adm') ? '/adm' : '';
+
 async function loginUser(event) {
     event.preventDefault();
     const error = document.getElementById('login-error');
@@ -37,7 +39,7 @@ async function loginUser(event) {
     submit.innerText = 'Verificando...';
 
     try {
-        const response = await fetch('/api/users/login', {
+        const response = await fetch(`${API_BASE}/api/users/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -80,8 +82,10 @@ async function apiFetch(url, method = 'GET', body = null) {
     const config = { method, headers };
     if (body) config.body = JSON.stringify(body);
 
+    const fullUrl = url.startsWith('http') ? url : `${API_BASE}${url.startsWith('/') ? '' : '/'}${url}`;
+
     try {
-        const response = await fetch(url, config);
+        const response = await fetch(fullUrl, config);
         if (!response.ok) {
             const errData = await response.json();
             if (response.status === 401 && authToken) {
