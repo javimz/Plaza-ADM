@@ -216,6 +216,70 @@ def get_dashboard_metrics(current_user: dict = Depends(get_current_user)):
             pass
     birthday_alerts.sort(key=lambda item: item["days_to_bday"])
 
+    # Próximas salidas de viajes / Vencimientos de salida
+    cursor.execute("""
+        SELECT bk.id, bk.booking_number, bk.title, bk.destination,
+               bk.start_date, bk.end_date, bk.currency, bk.status,
+               bk.total_amount, bk.paid_amount, bk.balance_due,
+               COALESCE(
+                   (SELECT GROUP_CONCAT(c.name, ', ')
+                    FROM booking_clients bc
+                    JOIN clients c ON c.id = bc.client_id
+                    WHERE bc.booking_id = bk.id),
+                   cl.name
+               ) as client_names
+        FROM bookings bk
+        LEFT JOIN clients cl ON cl.id = bk.client_id
+        WHERE bk.status NOT IN ('Cancelada', 'En presupuesto')
+          AND bk.start_date IS NOT NULL
+          AND bk.start_date != ''""" + payment_scope + """
+        ORDER BY bk.start_date ASC;
+    """, payment_params)
+    all_departures = cursor.fetchall()
+    upcoming_departures = []
+    for row in all_departures:
+        try:
+            dep_date = date.fromisoformat(row["start_date"])
+            days_left = (dep_date - today).days
+            if days_left >= -1:  # Salidas de hoy, futuras o iniciadas ayer
+                if days_left < 0:
+                    departure_status = "Inició ayer"
+                    is_urgent = True
+                elif days_left == 0:
+                    departure_status = "¡Sale hoy!"
+                    is_urgent = True
+                elif days_left == 1:
+                    departure_status = "¡Sale mañana!"
+                    is_urgent = True
+                elif days_left <= 7:
+                    departure_status = f"¡Faltan {days_left} días!"
+                    is_urgent = True
+                else:
+                    departure_status = f"En {days_left} días"
+                    is_urgent = False
+
+                upcoming_departures.append({
+                    "id": row["id"],
+                    "booking_number": row["booking_number"],
+                    "client_names": row["client_names"] or "Sin cliente",
+                    "title": row["title"],
+                    "destination": row["destination"],
+                    "start_date": row["start_date"],
+                    "end_date": row["end_date"] or "-",
+                    "currency": row["currency"] or "USD",
+                    "status": row["status"],
+                    "total_amount": float(row["total_amount"] or 0),
+                    "balance_due": float(row["balance_due"] or 0),
+                    "days_left": days_left,
+                    "departure_status": departure_status,
+                    "is_urgent": is_urgent,
+                })
+        except (TypeError, ValueError):
+            pass
+
+    upcoming_departures.sort(key=lambda x: x["days_left"])
+    upcoming_departures = upcoming_departures[:15]
+
     conn.close()
 
     return {
@@ -236,5 +300,6 @@ def get_dashboard_metrics(current_user: dict = Depends(get_current_user)):
         "bookings_by_status": bookings_by_status,
         "supplier_reminders": supplier_reminders,
         "passport_alerts": passport_alerts,
-        "birthday_alerts": birthday_alerts
+        "birthday_alerts": birthday_alerts,
+        "upcoming_departures": upcoming_departures
     }

@@ -1065,6 +1065,58 @@ async function loadDashboard() {
 
         renderDashboardCharts(data.monthly_collections || [], data.monthly_expenses || [], data.bookings_by_status || {});
 
+        // Grilla de Próximas Salidas de Viaje (salidas más cercanas, destacando en rojo <= 7 días)
+        const upcomingDepartures = data.upcoming_departures || [];
+        const upcomingCount = document.getElementById('dash-upcoming-departures-count');
+        const upcomingBody = document.getElementById('dash-upcoming-departures-body');
+        if (upcomingCount) upcomingCount.innerText = upcomingDepartures.length;
+        if (upcomingBody) {
+            if (!upcomingDepartures.length) {
+                upcomingBody.innerHTML = '<tr><td colspan="8" class="p-4 text-center text-slate-400">No hay reservas con salidas programadas próximas.</td></tr>';
+            } else {
+                upcomingBody.innerHTML = upcomingDepartures.map(item => {
+                    const isUrgent = item.is_urgent; // <= 7 días
+                    return `
+                        <tr class="border-b border-slate-100 transition ${isUrgent ? 'bg-rose-50/70 hover:bg-rose-100/70' : 'hover:bg-slate-50'}">
+                            <td class="p-3 font-bold ${isUrgent ? 'text-rose-900' : 'text-slate-900'}">
+                                ${escapeProfitText(item.booking_number)}
+                            </td>
+                            <td class="p-3 font-medium ${isUrgent ? 'text-rose-950' : 'text-slate-800'}">
+                                ${escapeProfitText(item.client_names)}
+                            </td>
+                            <td class="p-3 text-xs ${isUrgent ? 'text-rose-800' : 'text-slate-600'}">
+                                <span class="font-semibold block ${isUrgent ? 'text-rose-900' : 'text-slate-800'}">${escapeProfitText(item.destination || '-')}</span>
+                                <span class="text-slate-500">${escapeProfitText(item.title || '')}</span>
+                            </td>
+                            <td class="p-3 whitespace-nowrap ${isUrgent ? 'font-bold text-rose-700' : 'font-semibold text-slate-700'}">
+                                <i data-lucide="calendar" class="w-3.5 h-3.5 inline mr-1 ${isUrgent ? 'text-rose-600' : 'text-slate-400'}"></i>${escapeProfitText(item.start_date)}
+                            </td>
+                            <td class="p-3 whitespace-nowrap text-xs text-slate-500">
+                                ${escapeProfitText(item.end_date || '-')}
+                            </td>
+                            <td class="p-3 whitespace-nowrap">
+                                <span class="px-2.5 py-1 rounded-full text-xs font-bold inline-flex items-center gap-1 ${isUrgent ? 'bg-rose-100 text-rose-800 border border-rose-300 animate-pulse' : 'bg-blue-50 text-blue-700 border border-blue-200'}">
+                                    <i data-lucide="${isUrgent ? 'alert-triangle' : 'clock'}" class="w-3.5 h-3.5"></i>
+                                    ${escapeProfitText(item.departure_status)}
+                                </span>
+                            </td>
+                            <td class="p-3 text-right whitespace-nowrap">
+                                <span class="${item.balance_due > 0.009 ? 'font-bold text-amber-700' : 'text-emerald-600 font-semibold'}">
+                                    ${formatProfitAmount(item.currency, item.balance_due)}
+                                </span>
+                                ${item.balance_due > 0.009 ? '<span class="block text-[10px] text-amber-600 font-normal">Pendiente</span>' : '<span class="block text-[10px] text-emerald-600 font-normal">Saldado</span>'}
+                            </td>
+                            <td class="p-3 text-center">
+                                <span class="px-2 py-0.5 rounded-full text-xs font-semibold ${item.status === 'Confirmada' ? 'bg-emerald-100 text-emerald-800' : item.status === 'En Curso' ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-700'}">
+                                    ${escapeProfitText(item.status)}
+                                </span>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+        }
+
         const tbody = document.getElementById('dash-recent-payments-body');
         if (!data.recent_payments || data.recent_payments.length === 0) {
             tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-slate-400">Sin pagos registrados recientemente</td></tr>`;
