@@ -1,3 +1,4 @@
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.database import get_db_connection
@@ -34,6 +35,8 @@ def get_activity_logs(
 
 @router.delete("")
 def clear_activity_logs(
+    from_date: Optional[str] = Query(None, description="Fecha inicial (YYYY-MM-DD)"),
+    to_date: Optional[str] = Query(None, description="Fecha final (YYYY-MM-DD)"),
     current_user: dict = Depends(get_current_user),
 ):
     if current_user.get("role") != "admin":
@@ -41,8 +44,25 @@ def clear_activity_logs(
 
     conn = get_db_connection()
     try:
-        conn.execute("DELETE FROM activity_logs;")
+        query = "DELETE FROM activity_logs WHERE 1=1"
+        params = []
+        if from_date:
+            query += " AND substr(created_at, 1, 10) >= ?"
+            params.append(from_date)
+        if to_date:
+            query += " AND substr(created_at, 1, 10) <= ?"
+            params.append(to_date)
+
+        cursor = conn.execute(query, params)
+        deleted_count = cursor.rowcount
         conn.commit()
-        return {"message": "Log de actividad vaciado correctamente."}
+
+        if from_date or to_date:
+            date_range_desc = f"entre {from_date or 'el inicio'} y {to_date or 'hoy'}"
+            msg = f"Se eliminaron {deleted_count} registros de actividad ({date_range_desc})."
+        else:
+            msg = f"Log de actividad vaciado por completo ({deleted_count} registros eliminados)."
+
+        return {"message": msg, "deleted_count": deleted_count}
     finally:
         conn.close()

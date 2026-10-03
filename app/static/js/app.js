@@ -905,15 +905,64 @@ async function loadAuditLogs() {
     } catch (e) { console.error(e); }
 }
 
-async function clearAuditLogs() {
-    if (!confirm('¿Está seguro de que desea vaciar todo el historial del log de actividad?')) return;
+function openClearAuditModal() {
+    const fromInput = document.getElementById('clear-audit-from');
+    const toInput = document.getElementById('clear-audit-to');
+    if (fromInput) fromInput.value = '';
+    if (toInput) toInput.value = '';
+    openModal('modal-clear-audit');
+    if (window.lucide) lucide.createIcons();
+}
+
+async function executeClearAuditByRange(event) {
+    if (event) event.preventDefault();
+    const fromDate = document.getElementById('clear-audit-from').value;
+    const toDate = document.getElementById('clear-audit-to').value;
+
+    if (!fromDate && !toDate) {
+        alert('Por favor seleccione al menos una fecha (Desde o Hasta), o use el botón "Vaciar Todo el Historial".');
+        return;
+    }
+
+    if (fromDate && toDate && fromDate > toDate) {
+        alert('La fecha "Desde" no puede ser posterior a la fecha "Hasta".');
+        return;
+    }
+
+    const rangeDesc = (fromDate && toDate)
+        ? `entre el ${fromDate} y el ${toDate}`
+        : (fromDate ? `desde el ${fromDate} en adelante` : `hasta el ${toDate}`);
+
+    if (!confirm(`¿Está seguro de eliminar los registros del log de actividad ${rangeDesc}? Esta acción no se puede deshacer.`)) return;
+
     try {
-        await apiFetch('/api/audit', 'DELETE');
-        alert('Log de actividad vaciado correctamente.');
+        const params = new URLSearchParams();
+        if (fromDate) params.append('from_date', fromDate);
+        if (toDate) params.append('to_date', toDate);
+
+        const res = await apiFetch(`/api/audit?${params.toString()}`, 'DELETE');
+        closeModal('modal-clear-audit');
+        alert(res?.message || 'Registros de actividad eliminados correctamente.');
         await loadAuditLogs();
     } catch (e) {
         console.error(e);
     }
+}
+
+async function executeClearAuditAll() {
+    if (!confirm('¿Está seguro de que desea vaciar TODO el historial del log de actividad? Esta acción no se puede deshacer.')) return;
+    try {
+        const res = await apiFetch('/api/audit', 'DELETE');
+        closeModal('modal-clear-audit');
+        alert(res?.message || 'Log de actividad vaciado por completo.');
+        await loadAuditLogs();
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+function clearAuditLogs() {
+    openClearAuditModal();
 }
 
 // CACHE LOADERS

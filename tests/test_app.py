@@ -611,5 +611,25 @@ class TestTravelAgencyApp(unittest.TestCase):
         self.assertCountEqual(booking["client_ids"], [1, 2])
         self.assertEqual(len(booking["client_names"]), 2)
 
+    def test_17_clear_activity_logs_by_date_range(self):
+        # Verify audit logs can be fetched
+        audit_res = self.client.get("/api/audit")
+        self.assertEqual(audit_res.status_code, 200)
+
+        # Delete by date range in the past (should delete 0 or matching)
+        del_range = self.client.delete("/api/audit?from_date=2020-01-01&to_date=2020-01-02")
+        self.assertEqual(del_range.status_code, 200)
+        self.assertIn("deleted_count", del_range.json())
+
+        # Delete all logs
+        del_all = self.client.delete("/api/audit")
+        self.assertEqual(del_all.status_code, 200)
+        self.assertIn("deleted_count", del_all.json())
+
+        # Check logs are now empty or only contains newly triggered actions
+        after_logs = self.client.get("/api/audit").json()
+        self.assertEqual(len(after_logs), 0)
+
 if __name__ == "__main__":
     unittest.main()
+
