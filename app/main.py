@@ -136,7 +136,11 @@ if os.path.exists(static_dir):
 def get_manifest():
     manifest_file = os.path.join(static_dir, "manifest.json")
     if os.path.exists(manifest_file):
-        return FileResponse(manifest_file, media_type="application/manifest+json")
+        return FileResponse(
+            manifest_file,
+            media_type="application/manifest+json",
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate"}
+        )
     return {"name": "Plaza Bohemia ADM"}
 
 
@@ -147,7 +151,10 @@ def get_service_worker():
         return FileResponse(
             sw_file,
             media_type="application/javascript",
-            headers={"Service-Worker-Allowed": "/"}
+            headers={
+                "Service-Worker-Allowed": "/",
+                "Cache-Control": "no-cache, no-store, must-revalidate"
+            }
         )
     return ""
 
@@ -156,7 +163,14 @@ def get_service_worker():
 def read_root():
     index_file = os.path.join(static_dir, "index.html")
     if os.path.exists(index_file):
-        return FileResponse(index_file)
+        return FileResponse(
+            index_file,
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0"
+            }
+        )
     return {"message": "Sistema de Gestión Administrativo para Agencia de Viajes API activo."}
 
 
