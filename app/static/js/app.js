@@ -2552,6 +2552,10 @@ async function logout(message = '') {
     }
     authToken = '';
     currentUser = null;
+    try {
+        localStorage.removeItem('plaza_auth_token');
+        localStorage.removeItem('plaza_user');
+    } catch (e) {}
     document.getElementById('login-form').reset();
     const error = document.getElementById('login-error');
     error.innerText = message;

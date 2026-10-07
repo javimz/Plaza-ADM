@@ -57,6 +57,48 @@
             <script>
                 const APP_BASE = window.location.pathname.startsWith('/adm') ? '/adm' : '';
 
+                // 1. Auto-restore saved session on page load
+                (function autoRestoreSession() {
+                    try {
+                        const savedToken = localStorage.getItem('plaza_auth_token');
+                        const savedUserJson = localStorage.getItem('plaza_user');
+                        if (savedToken && savedUserJson) {
+                            const user = JSON.parse(savedUserJson);
+                            window.authToken = savedToken;
+                            window.currentUser = user;
+
+                            // Hide login screen as early as possible
+                            const hideLogin = () => {
+                                const loginScreen = document.getElementById('login-screen');
+                                if (loginScreen) loginScreen.classList.add('hidden');
+
+                                const nameEl = document.getElementById('user-display-name');
+                                const roleEl = document.getElementById('user-display-role');
+                                const avatarEl = document.getElementById('user-avatar');
+                                if (nameEl) nameEl.innerText = user.full_name || user.username;
+                                if (roleEl) roleEl.innerText = user.role || 'usuario';
+                                if (avatarEl) avatarEl.innerText = (user.full_name || user.username || 'U').charAt(0).toUpperCase();
+
+                                if (typeof applyRolePermissions === 'function') applyRolePermissions();
+                                const initialTab = (window.ROLE_ALLOWED_TABS && window.ROLE_ALLOWED_TABS[user.role]) ? window.ROLE_ALLOWED_TABS[user.role][0] : 'budgets';
+                                if (typeof switchTab === 'function') switchTab(initialTab);
+                                if (typeof loadClientsCache === 'function') loadClientsCache();
+                                if (typeof loadSuppliersCache === 'function') loadSuppliersCache();
+                                if (typeof loadSalespeopleCache === 'function') loadSalespeopleCache();
+                                if (typeof loadNotificationsSummary === 'function') loadNotificationsSummary();
+                            };
+
+                            if (document.readyState === 'loading') {
+                                document.addEventListener('DOMContentLoaded', hideLogin);
+                            } else {
+                                hideLogin();
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('No se pudo restaurar la sesión guardada:', e);
+                    }
+                })();
+
                 async function loginUser(event) {
                     if (event && event.preventDefault) event.preventDefault();
                     const error = document.getElementById('login-error');
@@ -110,6 +152,12 @@
 
                         window.authToken = data.access_token;
                         window.currentUser = data.user;
+
+                        // Persist session in localStorage
+                        try {
+                            localStorage.setItem('plaza_auth_token', data.access_token);
+                            localStorage.setItem('plaza_user', JSON.stringify(data.user));
+                        } catch (e) {}
 
                         const nameEl = document.getElementById('user-display-name');
                         const roleEl = document.getElementById('user-display-role');
@@ -1777,6 +1825,6 @@
     </div>
 
     <!-- Application Script -->
-    <script src="static/js/app.js?v=20261007_19"></script>
+    <script src="static/js/app.js?v=20261007_20"></script>
 </body>
 </html>
