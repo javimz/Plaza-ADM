@@ -48,6 +48,125 @@
                 <h2 class="text-lg font-bold text-slate-900">Iniciar sesión</h2>
                 <p class="text-sm text-slate-500 mt-1">Ingrese sus credenciales para continuar.</p>
             </div>
+            <script>
+                const APP_BASE = window.location.pathname.startsWith('/adm') ? '/adm' : '';
+
+                async function loginUser(event) {
+                    if (event && event.preventDefault) event.preventDefault();
+                    const error = document.getElementById('login-error');
+                    const submit = document.getElementById('login-submit');
+                    const usernameInput = document.getElementById('login-username');
+                    const passwordInput = document.getElementById('login-password');
+
+                    if (error) {
+                        error.classList.add('hidden');
+                        error.innerText = '';
+                    }
+                    if (submit) {
+                        submit.disabled = true;
+                        submit.innerText = 'Verificando...';
+                    }
+
+                    const username = usernameInput ? usernameInput.value.trim() : '';
+                    const password = passwordInput ? passwordInput.value : '';
+
+                    if (!username || !password) {
+                        if (error) {
+                            error.innerText = 'Por favor, ingrese usuario y contraseña.';
+                            error.classList.remove('hidden');
+                            error.style.display = 'block';
+                        }
+                        if (submit) {
+                            submit.disabled = false;
+                            submit.innerHTML = '<i data-lucide="log-in" class="w-4 h-4"></i> Ingresar al sistema';
+                            if (window.lucide) lucide.createIcons();
+                        }
+                        return false;
+                    }
+
+                    try {
+                        const response = await fetch(`${APP_BASE}/api/users/login`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ username, password })
+                        });
+
+                        let data = {};
+                        try {
+                            data = await response.json();
+                        } catch (e) {
+                            throw new Error(`Error de servidor (${response.status})`);
+                        }
+
+                        if (!response.ok) {
+                            throw new Error(data.detail || 'Usuario o contraseña incorrectos');
+                        }
+
+                        window.authToken = data.access_token;
+                        window.currentUser = data.user;
+
+                        const nameEl = document.getElementById('user-display-name');
+                        const roleEl = document.getElementById('user-display-role');
+                        const avatarEl = document.getElementById('user-avatar');
+                        if (nameEl) nameEl.innerText = data.user.full_name || data.user.username;
+                        if (roleEl) roleEl.innerText = data.user.role || 'usuario';
+                        if (avatarEl) avatarEl.innerText = (data.user.full_name || data.user.username || 'U').charAt(0).toUpperCase();
+
+                        if (typeof applyRolePermissions === 'function') applyRolePermissions();
+
+                        if (passwordInput) passwordInput.value = '';
+                        const loginScreen = document.getElementById('login-screen');
+                        if (loginScreen) loginScreen.classList.add('hidden');
+
+                        if (typeof switchTab === 'function') {
+                            const initialTab = (window.ROLE_ALLOWED_TABS && window.ROLE_ALLOWED_TABS[data.user.role]) ? window.ROLE_ALLOWED_TABS[data.user.role][0] : 'budgets';
+                            switchTab(initialTab);
+                        }
+                        if (typeof loadClientsCache === 'function') loadClientsCache();
+                        if (typeof loadSuppliersCache === 'function') loadSuppliersCache();
+                        if (typeof loadSalespeopleCache === 'function') loadSalespeopleCache();
+                        if (typeof loadNotificationsSummary === 'function') loadNotificationsSummary();
+                    } catch (err) {
+                        console.error('Error en login:', err);
+                        const errMsg = err.message || 'No se pudo iniciar sesión. Intente nuevamente.';
+                        if (error) {
+                            error.innerText = errMsg;
+                            error.classList.remove('hidden');
+                            error.style.display = 'block';
+                        }
+                        alert(errMsg);
+                        if (passwordInput) {
+                            passwordInput.value = '';
+                            passwordInput.focus();
+                        }
+                    } finally {
+                        if (submit) {
+                            submit.disabled = false;
+                            submit.innerHTML = '<i data-lucide="log-in" class="w-4 h-4"></i> Ingresar al sistema';
+                            if (window.lucide) lucide.createIcons();
+                        }
+                    }
+                    return false;
+                }
+
+                async function forceResetApp() {
+                    try {
+                        localStorage.clear();
+                        sessionStorage.clear();
+                        if ('serviceWorker' in navigator) {
+                            const regs = await navigator.serviceWorker.getRegistrations();
+                            for (const r of regs) await r.unregister();
+                        }
+                        if ('caches' in window) {
+                            const keys = await caches.keys();
+                            for (const k of keys) await caches.delete(k);
+                        }
+                    } catch (e) {
+                        console.error('Error limpiando caché:', e);
+                    }
+                    window.location.href = window.location.pathname + '?nocache=' + Date.now();
+                }
+            </script>
             <form id="login-form" action="#" onsubmit="event.preventDefault(); loginUser(event); return false;" class="space-y-5">
                 <div>
                     <label for="login-username" class="block text-sm font-semibold text-slate-700 mb-1.5">Usuario</label>
