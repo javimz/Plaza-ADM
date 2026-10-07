@@ -1,7 +1,15 @@
 // Main JavaScript Controller for Travel Agency ADM System
 
-let currentUser = null;
-let authToken = '';
+let authToken = localStorage.getItem('plaza_auth_token') || window.authToken || '';
+let currentUser = (() => {
+    try {
+        const u = localStorage.getItem('plaza_user');
+        return u ? JSON.parse(u) : (window.currentUser || null);
+    } catch (e) {
+        return window.currentUser || null;
+    }
+})();
+
 let clientsCache = [];
 let suppliersCache = [];
 let bookingsCache = [];
@@ -18,7 +26,8 @@ let budgetSelectedSellerIds = [];
 document.addEventListener('DOMContentLoaded', () => {
     // Set current date
     const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-    document.getElementById('current-date-display').innerText = new Date().toLocaleDateString('es-ES', options);
+    const dateDisplay = document.getElementById('current-date-display');
+    if (dateDisplay) dateDisplay.innerText = new Date().toLocaleDateString('es-ES', options);
 
     // Initial icon render
     if (window.lucide) lucide.createIcons();
@@ -26,7 +35,32 @@ document.addEventListener('DOMContentLoaded', () => {
     setupBudgetSearchInputs();
     initPWAAndServiceWorker();
 
-    document.getElementById('login-username').focus();
+    // Auto-restore session from localStorage if logged in
+    if (authToken && currentUser) {
+        window.authToken = authToken;
+        window.currentUser = currentUser;
+
+        const loginScreen = document.getElementById('login-screen');
+        if (loginScreen) loginScreen.classList.add('hidden');
+
+        const nameEl = document.getElementById('user-display-name');
+        const roleEl = document.getElementById('user-display-role');
+        const avatarEl = document.getElementById('user-avatar');
+        if (nameEl) nameEl.innerText = currentUser.full_name || currentUser.username;
+        if (roleEl) roleEl.innerText = currentUser.role || 'usuario';
+        if (avatarEl) avatarEl.innerText = (currentUser.full_name || currentUser.username || 'U').charAt(0).toUpperCase();
+
+        applyRolePermissions();
+        const initialTab = (ROLE_ALLOWED_TABS[currentUser.role] || ['budgets'])[0];
+        switchTab(initialTab);
+        loadClientsCache().catch(e => console.error(e));
+        loadSuppliersCache().catch(e => console.error(e));
+        loadSalespeopleCache().catch(e => console.error(e));
+        loadNotificationsSummary().catch(e => console.error(e));
+    } else {
+        const userInp = document.getElementById('login-username');
+        if (userInp) userInp.focus();
+    }
 });
 
 const API_BASE = window.location.pathname.startsWith('/adm') ? '/adm' : '';
@@ -85,6 +119,13 @@ async function loginUser(event) {
 
         authToken = data.access_token;
         currentUser = data.user;
+        window.authToken = authToken;
+        window.currentUser = currentUser;
+
+        try {
+            localStorage.setItem('plaza_auth_token', authToken);
+            localStorage.setItem('plaza_user', JSON.stringify(currentUser));
+        } catch (e) {}
 
         const nameEl = document.getElementById('user-display-name');
         const roleEl = document.getElementById('user-display-role');
@@ -137,7 +178,8 @@ async function loginUser(event) {
 // Helper for HTTP requests
 async function apiFetch(url, method = 'GET', body = null) {
     const headers = { 'Content-Type': 'application/json' };
-    if (authToken) headers.Authorization = `Bearer ${authToken}`;
+    const token = authToken || localStorage.getItem('plaza_auth_token') || window.authToken || '';
+    if (token) headers.Authorization = `Bearer ${token}`;
     const config = { method, headers };
     if (body) config.body = JSON.stringify(body);
 
@@ -146,8 +188,8 @@ async function apiFetch(url, method = 'GET', body = null) {
     try {
         const response = await fetch(fullUrl, config);
         if (!response.ok) {
-            const errData = await response.json();
-            if (response.status === 401 && authToken) {
+            const errData = await response.json().catch(() => ({}));
+            if (response.status === 401 && token) {
                 logout('La sesión expiró. Inicie sesión nuevamente.');
                 throw new Error('Sesión expirada');
             }
