@@ -32,49 +32,105 @@ document.addEventListener('DOMContentLoaded', () => {
 const API_BASE = window.location.pathname.startsWith('/adm') ? '/adm' : '';
 
 async function loginUser(event) {
-    event.preventDefault();
+    if (event && event.preventDefault) {
+        event.preventDefault();
+    }
     const error = document.getElementById('login-error');
     const submit = document.getElementById('login-submit');
-    error.classList.add('hidden');
-    submit.disabled = true;
-    submit.innerText = 'Verificando...';
+    const usernameInput = document.getElementById('login-username');
+    const passwordInput = document.getElementById('login-password');
+
+    if (error) {
+        error.classList.add('hidden');
+        error.innerText = '';
+    }
+    if (submit) {
+        submit.disabled = true;
+        submit.innerText = 'Verificando...';
+    }
+
+    const username = usernameInput ? usernameInput.value.trim() : '';
+    const password = passwordInput ? passwordInput.value : '';
+
+    if (!username || !password) {
+        if (error) {
+            error.innerText = 'Por favor, ingrese usuario y contraseña.';
+            error.classList.remove('hidden');
+        }
+        if (submit) {
+            submit.disabled = false;
+            submit.innerHTML = '<i data-lucide="log-in" class="w-4 h-4"></i> Ingresar al sistema';
+            if (window.lucide) lucide.createIcons();
+        }
+        return false;
+    }
 
     try {
         const response = await fetch(`${API_BASE}/api/users/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                username: document.getElementById('login-username').value.trim(),
-                password: document.getElementById('login-password').value
-            })
+            body: JSON.stringify({ username, password })
         });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.detail || 'Usuario o contraseña incorrectos');
+
+        let data = {};
+        try {
+            data = await response.json();
+        } catch (e) {
+            throw new Error(`Error de servidor (${response.status}): no se pudo interpretar la respuesta.`);
+        }
+
+        if (!response.ok) {
+            throw new Error(data.detail || 'Usuario o contraseña incorrectos');
+        }
 
         authToken = data.access_token;
         currentUser = data.user;
-        document.getElementById('user-display-name').innerText = currentUser.full_name || currentUser.username;
-        document.getElementById('user-display-role').innerText = currentUser.role || 'usuario';
-        document.getElementById('user-avatar').innerText = (currentUser.full_name || currentUser.username || 'U').charAt(0).toUpperCase();
+
+        const nameEl = document.getElementById('user-display-name');
+        const roleEl = document.getElementById('user-display-role');
+        const avatarEl = document.getElementById('user-avatar');
+        if (nameEl) nameEl.innerText = currentUser.full_name || currentUser.username;
+        if (roleEl) roleEl.innerText = currentUser.role || 'usuario';
+        if (avatarEl) avatarEl.innerText = (currentUser.full_name || currentUser.username || 'U').charAt(0).toUpperCase();
+
         applyRolePermissions();
-        document.getElementById('login-password').value = '';
-        document.getElementById('login-screen').classList.add('hidden');
+
+        if (passwordInput) passwordInput.value = '';
+        const loginScreen = document.getElementById('login-screen');
+        if (loginScreen) loginScreen.classList.add('hidden');
+
         const initialTab = (ROLE_ALLOWED_TABS[currentUser.role] || ['budgets'])[0];
-        switchTab(initialTab);
-        loadClientsCache();
-        loadSuppliersCache();
-        loadSalespeopleCache();
-        loadNotificationsSummary();
+        try {
+            switchTab(initialTab);
+        } catch (tabErr) {
+            console.error('Error al cambiar pestaña inicial:', tabErr);
+        }
+
+        // Background cache loads
+        loadClientsCache().catch(e => console.error(e));
+        loadSuppliersCache().catch(e => console.error(e));
+        loadSalespeopleCache().catch(e => console.error(e));
+        loadNotificationsSummary().catch(e => console.error(e));
     } catch (err) {
-        error.innerText = err.message || 'No se pudo iniciar sesión. Intente nuevamente.';
-        error.classList.remove('hidden');
-        document.getElementById('login-password').value = '';
-        document.getElementById('login-password').focus();
+        console.error('Error en login:', err);
+        if (error) {
+            error.innerText = err.message || 'No se pudo iniciar sesión. Intente nuevamente.';
+            error.classList.remove('hidden');
+        } else {
+            alert(err.message || 'No se pudo iniciar sesión.');
+        }
+        if (passwordInput) {
+            passwordInput.value = '';
+            passwordInput.focus();
+        }
     } finally {
-        submit.disabled = false;
-        submit.innerHTML = '<i data-lucide="log-in" class="w-4 h-4"></i> Ingresar al sistema';
-        if (window.lucide) lucide.createIcons();
+        if (submit) {
+            submit.disabled = false;
+            submit.innerHTML = '<i data-lucide="log-in" class="w-4 h-4"></i> Ingresar al sistema';
+            if (window.lucide) lucide.createIcons();
+        }
     }
+    return false;
 }
 
 // Helper for HTTP requests

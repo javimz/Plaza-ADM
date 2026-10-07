@@ -43,7 +43,7 @@
                 <h2 class="text-lg font-bold text-slate-900">Iniciar sesión</h2>
                 <p class="text-sm text-slate-500 mt-1">Ingrese sus credenciales para continuar.</p>
             </div>
-            <form id="login-form" onsubmit="loginUser(event)" class="space-y-5">
+            <form id="login-form" action="#" onsubmit="event.preventDefault(); loginUser(event); return false;" class="space-y-5">
                 <div>
                     <label for="login-username" class="block text-sm font-semibold text-slate-700 mb-1.5">Usuario</label>
                     <input id="login-username" name="username" type="text" autocomplete="username" required class="w-full px-4 py-3 border border-slate-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Nombre de usuario">
@@ -1647,6 +1647,6 @@
     </div>
 
     <!-- Application Script -->
-    <script src="static/js/app.js?v=20261007_8"></script>
+    <script src="static/js/app.js?v=20261007_9"></script>
 </body>
 </html>
