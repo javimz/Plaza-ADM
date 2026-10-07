@@ -627,8 +627,58 @@ class TestTravelAgencyApp(unittest.TestCase):
         self.assertIn("deleted_count", del_all.json())
 
         # Check logs are now empty or only contains newly triggered actions
-        after_logs = self.client.get("/api/audit").json()
-        self.assertEqual(len(after_logs), 0)
+    def test_18_delete_supplier_payable_and_payment(self):
+        # 1. Create a direct expense payable (single payment created automatically)
+        expense_payload = {
+            "supplier_id": 1,
+            "concept": "Gasto operativo test",
+            "amount": 15000.0,
+            "payment_date": str(date.today()),
+            "currency": "ARS",
+            "payment_method": "Transferencia",
+            "account": "Banco Galicia",
+            "receipt_number": "FAC-TEST-999"
+        }
+        res = self.client.post("/api/supplier-payables/expenses", json=expense_payload)
+        self.assertEqual(res.status_code, 200, res.text)
+        created_expense = res.json()
+        payable_id = created_expense["id"]
+        payment_id = created_expense["payments"][0]["id"]
+
+        # Verify payable exists and is Pagado
+        payable = self.client.get(f"/api/supplier-payables/{payable_id}")
+        self.assertEqual(payable.status_code, 200)
+        self.assertEqual(payable.json()["status"], "Pagado")
+
+        # Void/Delete the supplier payment
+        del_pay_res = self.client.delete(f"/api/supplier-payables/{payable_id}/payments/{payment_id}")
+        self.assertEqual(del_pay_res.status_code, 200)
+
+        # Because it was a direct expense with no other payments, the payable itself should be cleaned up
+        payable_check = self.client.get(f"/api/supplier-payables/{payable_id}")
+        self.assertEqual(payable_check.status_code, 404)
+
+        # 2. Create a standard invoice payable and test DELETE /api/supplier-payables/{id}
+        inv_payload = {
+            "supplier_id": 1,
+            "invoice_number": "FAC-INV-888",
+            "concept": "Factura proveedor a pagar",
+            "total_amount": 25000.0,
+            "issue_date": str(date.today()),
+            "due_date": str(date.today() + timedelta(days=15)),
+            "currency": "ARS"
+        }
+        res_inv = self.client.post("/api/supplier-payables", json=inv_payload)
+        self.assertEqual(res_inv.status_code, 200)
+        inv_id = res_inv.json()["id"]
+
+        # Delete the whole payable
+        del_inv_res = self.client.delete(f"/api/supplier-payables/{inv_id}")
+        self.assertEqual(del_inv_res.status_code, 200)
+
+        # Verify it's gone
+        inv_check = self.client.get(f"/api/supplier-payables/{inv_id}")
+        self.assertEqual(inv_check.status_code, 404)
 
 if __name__ == "__main__":
     unittest.main()

@@ -313,10 +313,37 @@ def delete_supplier_payment(
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
+        cursor.execute("SELECT issue_date, due_date FROM supplier_payables WHERE id = ?;", (payable_id,))
+        payable = cursor.fetchone()
         cursor.execute("DELETE FROM supplier_payments WHERE id = ? AND payable_id = ?;", (payment_id, payable_id))
         if cursor.rowcount == 0:
             raise HTTPException(status_code=404, detail="Pago de proveedor no encontrado")
+
+        cursor.execute("SELECT COUNT(*) FROM supplier_payments WHERE payable_id = ?;", (payable_id,))
+        remaining = cursor.fetchone()[0]
+        if remaining == 0 and payable and payable["issue_date"] == payable["due_date"]:
+            cursor.execute("DELETE FROM supplier_payables WHERE id = ?;", (payable_id,))
+
         conn.commit()
         return {"message": "Pago anulado"}
+    finally:
+        conn.close()
+
+
+@router.delete("/{payable_id}")
+def delete_supplier_payable(
+    payable_id: int,
+    current_user: dict = Depends(get_current_user),
+):
+    _require_finance_role(current_user)
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM supplier_payments WHERE payable_id = ?;", (payable_id,))
+        cursor.execute("DELETE FROM supplier_payables WHERE id = ?;", (payable_id,))
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Cuenta por pagar no encontrada")
+        conn.commit()
+        return {"message": "Cuenta por pagar eliminada"}
     finally:
         conn.close()

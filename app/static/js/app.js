@@ -466,8 +466,26 @@ function renderSupplierPayables() {
             <td class="p-4 text-right text-emerald-700">${formatProfitAmount(item.currency, item.paid_amount)}</td>
             <td class="p-4 text-right font-bold ${item.balance_due > 0.009 ? 'text-amber-700' : 'text-slate-400'}">${formatProfitAmount(item.currency, item.balance_due)}</td>
             <td class="p-4"><span class="rounded-full px-2.5 py-1 text-xs font-semibold ${statusStyles[item.status] || 'bg-slate-100 text-slate-700'}">${escapeProfitText(item.status)}</span></td>
-            <td class="p-4 text-right"><div class="flex justify-end gap-1.5"><button onclick="showSupplierPayableDetails(${item.id})" class="rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-200">Detalle (${item.payment_count})</button>${canManage && item.balance_due > 0.009 ? `<button onclick="openSupplierPaymentModal(${item.id})" class="rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700">Registrar pago</button>` : ''}</div></td>
+            <td class="p-4 text-right">
+                <div class="flex justify-end items-center gap-1.5">
+                    <button onclick="showSupplierPayableDetails(${item.id})" class="rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-200">Detalle (${item.payment_count})</button>
+                    ${canManage && item.balance_due > 0.009 ? `<button onclick="openSupplierPaymentModal(${item.id})" class="rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700">Registrar pago</button>` : ''}
+                    ${canManage ? `<button onclick="deleteSupplierPayable(${item.id})" class="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg transition" title="Eliminar cuenta por pagar"><i data-lucide="trash-2" class="w-4 h-4"></i></button>` : ''}
+                </div>
+            </td>
         </tr>`).join('');
+    if (window.lucide) lucide.createIcons();
+}
+
+async function deleteSupplierPayable(payableId) {
+    if (!confirm('¿Está seguro de eliminar esta cuenta por pagar y todos sus pagos registrados asociados?')) return;
+    try {
+        await apiFetch(`/api/supplier-payables/${payableId}`, 'DELETE');
+        alert('Cuenta por pagar eliminada correctamente.');
+        await refreshAfterFinancialChange();
+    } catch (e) {
+        console.error(e);
+    }
 }
 
 async function openSupplierPayableModal(budgetId = null, bookingId = null) {
@@ -518,7 +536,7 @@ async function saveSupplierPayable(event) {
     try {
         await apiFetch('/api/supplier-payables', 'POST', payload);
         closeModal('modal-supplier-payable');
-        await loadSupplierPayables();
+        await refreshAfterFinancialChange();
     } catch (e) { console.error(e); }
 }
 
@@ -549,7 +567,7 @@ async function saveSupplierPayment(event) {
     try {
         await apiFetch(`/api/supplier-payables/${payableId}/payments`, 'POST', payload);
         closeModal('modal-supplier-payment');
-        await loadSupplierPayables();
+        await refreshAfterFinancialChange();
     } catch (e) { console.error(e); }
 }
 
@@ -563,9 +581,29 @@ async function showSupplierPayableDetails(payableId) {
         document.getElementById('supplier-detail-paid').innerText = formatProfitAmount(payable.currency, payable.paid_amount);
         document.getElementById('supplier-detail-balance').innerText = formatProfitAmount(payable.currency, payable.balance_due);
         const body = document.getElementById('supplier-payable-payments-body');
+        const canManage = canManageSupplierPayables();
         body.innerHTML = payable.payments?.length ? payable.payments.map(payment => `
-            <tr class="border-b border-slate-100"><td class="p-3">${escapeProfitText(payment.payment_date)}</td><td class="p-3 text-right font-semibold text-emerald-700">${formatProfitAmount(payable.currency, payment.amount)}</td><td class="p-3">${escapeProfitText(payment.payment_method)}</td><td class="p-3">${escapeProfitText(payment.reference || '-')}</td><td class="p-3">${escapeProfitText(payment.registered_by_name || '-')}</td><td class="p-3">${escapeProfitText(payment.notes || '-')}</td></tr>`).join('') : '<tr><td colspan="6" class="p-5 text-center text-slate-400">Todavía no hay pagos registrados para esta cuenta.</td></tr>';
+            <tr class="border-b border-slate-100">
+                <td class="p-3">${escapeProfitText(payment.payment_date)}</td>
+                <td class="p-3 text-right font-semibold text-emerald-700">${formatProfitAmount(payable.currency, payment.amount)}</td>
+                <td class="p-3">${escapeProfitText(payment.payment_method)}</td>
+                <td class="p-3">${escapeProfitText(payment.reference || '-')}</td>
+                <td class="p-3">${escapeProfitText(payment.registered_by_name || '-')}</td>
+                <td class="p-3">${escapeProfitText(payment.notes || '-')}</td>
+                <td class="p-3 text-right">${canManage ? `<button onclick="anularPagoProveedorDesdeDetalle(${payable.id}, ${payment.id})" class="text-xs text-rose-600 hover:text-rose-800 font-medium">Anular</button>` : ''}</td>
+            </tr>`).join('') : '<tr><td colspan="7" class="p-5 text-center text-slate-400">Todavía no hay pagos registrados para esta cuenta.</td></tr>';
         openModal('modal-supplier-payable-detail');
+        if (window.lucide) lucide.createIcons();
+    } catch (e) { console.error(e); }
+}
+
+async function anularPagoProveedorDesdeDetalle(payableId, paymentId) {
+    if (!confirm('¿Está seguro de anular este pago a proveedor?')) return;
+    try {
+        await apiFetch(`/api/supplier-payables/${payableId}/payments/${paymentId}`, 'DELETE');
+        alert('Pago anulado exitosamente.');
+        closeModal('modal-supplier-payable-detail');
+        await refreshAfterFinancialChange();
     } catch (e) { console.error(e); }
 }
 
@@ -1644,19 +1682,14 @@ async function loadPaymentsHistory() {
 }
 
 async function refreshAfterFinancialChange() {
-    const promises = [loadBookings(), loadBudgets(), loadPaymentsHistory()];
-    const activeDashboard = document.getElementById('view-dashboard');
-    if (activeDashboard && !activeDashboard.classList.contains('hidden')) {
-        promises.push(loadDashboard());
-    }
-    const activeProfits = document.getElementById('view-profits');
-    if (activeProfits && !activeProfits.classList.contains('hidden')) {
-        promises.push(loadProfits());
-    }
-    const activePayables = document.getElementById('view-supplier-payables');
-    if (activePayables && !activePayables.classList.contains('hidden')) {
-        promises.push(loadSupplierPayables());
-    }
+    const promises = [
+        loadBookings(),
+        loadBudgets(),
+        loadPaymentsHistory(),
+        loadSupplierPayables(),
+        loadDashboard(),
+        loadProfits()
+    ];
     await Promise.all(promises);
     if (!document.getElementById('sales-payments-panel').classList.contains('hidden')) {
         loadSalesPaymentsDetails();
@@ -1672,8 +1705,13 @@ async function anularPago(paymentId) {
 
 async function anularPagoProveedor(payableId, paymentId) {
     if (!confirm('¿Está seguro de anular este egreso a proveedor?')) return;
-    await apiFetch(`/api/supplier-payables/${payableId}/payments/${paymentId}`, 'DELETE');
-    await refreshAfterFinancialChange();
+    try {
+        await apiFetch(`/api/supplier-payables/${payableId}/payments/${paymentId}`, 'DELETE');
+        alert('Egreso a proveedor anulado exitosamente.');
+        await refreshAfterFinancialChange();
+    } catch (e) {
+        console.error(e);
+    }
 }
 
 function togglePaymentPartyFields() {
