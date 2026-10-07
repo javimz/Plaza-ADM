@@ -24,6 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (window.lucide) lucide.createIcons();
 
     setupBudgetSearchInputs();
+    initPWAAndServiceWorker();
 
     document.getElementById('login-username').focus();
 });
@@ -61,6 +62,7 @@ async function loginUser(event) {
         loadClientsCache();
         loadSuppliersCache();
         loadSalespeopleCache();
+        loadNotificationsSummary();
         const initialTab = (ROLE_ALLOWED_TABS[currentUser.role] || ['budgets'])[0];
         switchTab(initialTab);
     } catch (err) {
@@ -1688,7 +1690,8 @@ async function refreshAfterFinancialChange() {
         loadPaymentsHistory(),
         loadSupplierPayables(),
         loadDashboard(),
-        loadProfits()
+        loadProfits(),
+        loadNotificationsSummary()
     ];
     await Promise.all(promises);
     if (!document.getElementById('sales-payments-panel').classList.contains('hidden')) {
@@ -2503,4 +2506,278 @@ async function logout(message = '') {
     document.getElementById('user-avatar').innerText = 'U';
     document.querySelectorAll('[id^="modal-"]').forEach(modal => modal.classList.add('hidden'));
     document.getElementById('login-username').focus();
+}
+
+// ==========================================
+// PWA & WEB PUSH NOTIFICATIONS CONTROLLER
+// ==========================================
+let deferredPWAInstallPrompt = null;
+let notificationsSummaryCache = null;
+
+function urlBase64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+}
+
+async function initPWAAndServiceWorker() {
+    // 1. Handle PWA install prompt for mobile & desktop
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredPWAInstallPrompt = e;
+        const installBtn = document.getElementById('pwa-install-btn');
+        if (installBtn) {
+            installBtn.classList.remove('hidden');
+            installBtn.classList.add('flex');
+            if (window.lucide) lucide.createIcons();
+        }
+    });
+
+    window.addEventListener('appinstalled', () => {
+        deferredPWAInstallPrompt = null;
+        const installBtn = document.getElementById('pwa-install-btn');
+        if (installBtn) installBtn.classList.add('hidden');
+    });
+
+    // 2. Register Service Worker
+    if ('serviceWorker' in navigator) {
+        try {
+            const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+            checkPushSubscriptionStatus();
+        } catch (err) {
+            console.warn('Registro de Service Worker:', err);
+        }
+    }
+}
+
+async function installPWAApp() {
+    if (!deferredPWAInstallPrompt) {
+        alert('Para instalar en iPhone/iPad: toca el botón Compartir de Safari y selecciona "Agregar a pantalla de inicio". En Android, abre el menú de Chrome y elige "Instalar aplicación".');
+        return;
+    }
+    deferredPWAInstallPrompt.prompt();
+    const { outcome } = await deferredPWAInstallPrompt.userChoice;
+    if (outcome === 'accepted') {
+        const installBtn = document.getElementById('pwa-install-btn');
+        if (installBtn) installBtn.classList.add('hidden');
+    }
+    deferredPWAInstallPrompt = null;
+}
+
+async function checkPushSubscriptionStatus() {
+    const statusDot = document.getElementById('push-status-dot');
+    const statusTitle = document.getElementById('push-status-title');
+    const statusDesc = document.getElementById('push-status-desc');
+    const toggleBtn = document.getElementById('push-toggle-btn');
+    if (!statusDot || !toggleBtn) return;
+
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        statusDot.className = 'w-2.5 h-2.5 rounded-full bg-slate-400';
+        statusTitle.innerText = 'Notificaciones Push no soportadas';
+        statusDesc.innerText = 'Tu navegador no soporta el estándar Web Push o está en modo incógnito/privado.';
+        toggleBtn.classList.add('hidden');
+        return;
+    }
+
+    if (Notification.permission === 'denied') {
+        statusDot.className = 'w-2.5 h-2.5 rounded-full bg-rose-500';
+        statusTitle.innerText = 'Notificaciones Bloqueadas en el Navegador';
+        statusDesc.innerText = 'Los permisos de notificación están bloqueados. Habilítalos en la configuración del navegador para este sitio.';
+        toggleBtn.innerText = 'Permisos Bloqueados';
+        toggleBtn.disabled = true;
+        toggleBtn.className = 'shrink-0 px-4 py-2 text-xs font-bold bg-slate-300 text-slate-500 rounded-xl cursor-not-allowed';
+        return;
+    }
+
+    try {
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.getSubscription();
+
+        if (sub) {
+            statusDot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse';
+            statusTitle.innerText = '✅ Notificaciones Push ACTIVAS en este dispositivo';
+            statusDesc.innerText = 'Este celular/navegador está configurado para recibir alertas de salidas de viajes (7 días) y vencimientos de proveedores directamente en la barra de notificaciones.';
+            toggleBtn.innerHTML = '<i data-lucide="bell-off" class="w-4 h-4"></i> Desactivar en este Celular';
+            toggleBtn.disabled = false;
+            toggleBtn.className = 'shrink-0 px-4 py-2 text-xs font-bold bg-slate-200 hover:bg-rose-100 text-slate-700 hover:text-rose-700 rounded-xl transition flex items-center justify-center gap-1.5';
+        } else {
+            statusDot.className = 'w-2.5 h-2.5 rounded-full bg-amber-500';
+            statusTitle.innerText = 'Notificaciones desactivadas en este dispositivo';
+            statusDesc.innerText = 'Toca "Activar en Celular" para recibir alertas automáticas en la pantalla de bloqueo y barra superior.';
+            toggleBtn.innerHTML = '<i data-lucide="bell" class="w-4 h-4"></i> Activar en Celular';
+            toggleBtn.disabled = false;
+            toggleBtn.className = 'shrink-0 px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-sm transition flex items-center justify-center gap-1.5';
+        }
+        if (window.lucide) lucide.createIcons();
+    } catch (e) {
+        console.error('Error al comprobar estado push:', e);
+    }
+}
+
+async function togglePushNotifications() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        return alert('Las notificaciones Web Push no están disponibles en este navegador.');
+    }
+
+    try {
+        const reg = await navigator.serviceWorker.ready;
+        const currentSub = await reg.pushManager.getSubscription();
+
+        if (currentSub) {
+            // Unsubscribe
+            if (!confirm('¿Desea desactivar las notificaciones push en este dispositivo?')) return;
+            const endpoint = currentSub.endpoint;
+            await currentSub.unsubscribe();
+            try {
+                await apiFetch('/api/notifications/subscribe', 'DELETE', { endpoint });
+            } catch (e) {}
+            alert('Notificaciones push desactivadas para este dispositivo.');
+            await checkPushSubscriptionStatus();
+            return;
+        }
+
+        // Subscribe flow
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') {
+            alert('No se otorgaron permisos para enviar notificaciones.');
+            await checkPushSubscriptionStatus();
+            return;
+        }
+
+        const vapidData = await apiFetch('/api/notifications/vapid-public-key');
+        const convertedVapidKey = urlBase64ToUint8Array(vapidData.public_key);
+
+        const newSub = await reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: convertedVapidKey
+        });
+
+        const subJson = newSub.toJSON();
+        await apiFetch('/api/notifications/subscribe', 'POST', {
+            endpoint: subJson.endpoint,
+            keys: {
+                p256dh: subJson.keys.p256dh,
+                auth: subJson.keys.auth
+            },
+            user_agent: navigator.userAgent
+        });
+
+        alert('¡Excelente! Notificaciones activadas exitosamente en tu dispositivo.');
+        await checkPushSubscriptionStatus();
+        await loadNotificationsSummary();
+    } catch (err) {
+        console.error(err);
+        alert('No se pudo activar las notificaciones: ' + (err.message || err));
+    }
+}
+
+async function testPushNotification() {
+    try {
+        const res = await apiFetch('/api/notifications/test', 'POST');
+        alert(res.message || 'Notificación de prueba enviada a tu celular.');
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+async function sendPendingAlertsNow() {
+    try {
+        const res = await apiFetch('/api/notifications/send-alerts', 'POST');
+        alert(res.message || 'Alertas procesadas.');
+        await loadNotificationsSummary();
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+async function loadNotificationsSummary() {
+    if (!authToken) return;
+    try {
+        const data = await apiFetch('/api/notifications/summary');
+        notificationsSummaryCache = data;
+
+        const totalAlerts = Number(data.total_alerts || 0);
+        const badge = document.getElementById('notification-bell-badge');
+        if (badge) {
+            badge.innerText = String(totalAlerts);
+            badge.classList.toggle('hidden', totalAlerts === 0);
+        }
+
+        const modalTotalBadge = document.getElementById('modal-notif-total-badge');
+        if (modalTotalBadge) {
+            modalTotalBadge.innerText = `${totalAlerts} ${totalAlerts === 1 ? 'alerta' : 'alertas'}`;
+        }
+
+        // Render trips list
+        const tripsList = document.getElementById('modal-notif-trips-list');
+        if (tripsList) {
+            const trips = data.trip_departures || [];
+            if (!trips.length) {
+                tripsList.innerHTML = '<p class="text-xs text-slate-400 py-2">No hay salidas programadas en los próximos 7 días.</p>';
+            } else {
+                tripsList.innerHTML = trips.map(t => {
+                    const isUrgent = t.days_left <= 2;
+                    const daysLabel = t.days_left === 0 ? '¡Sale HOY!' : (t.days_left === 1 ? 'Sale mañana' : `Faltan ${t.days_left} días`);
+                    return `
+                        <div class="flex items-center justify-between p-3 rounded-xl border ${isUrgent ? 'border-rose-200 bg-rose-50/60' : 'border-blue-100 bg-blue-50/40'} text-xs">
+                            <div class="min-w-0 pr-2">
+                                <div class="flex items-center gap-1.5 font-bold text-slate-900">
+                                    <span>${escapeProfitText(t.booking_number)}</span>
+                                    <span class="font-normal text-slate-600 truncate">· ${escapeProfitText(t.title)} (${escapeProfitText(t.destination)})</span>
+                                </div>
+                                <div class="text-[11px] text-slate-500 mt-0.5">
+                                    Cliente: <b class="text-slate-700">${escapeProfitText(t.client_name)}</b> · Salida: <b>${escapeProfitText(t.start_date)}</b>
+                                    ${t.balance_due > 0.01 ? `<span class="text-amber-700 font-semibold ml-1">· Saldo pendiente: ${t.currency} $${t.balance_due.toLocaleString('es-AR', {minimumFractionDigits: 2})}</span>` : '<span class="text-emerald-700 font-semibold ml-1">· Totalmente cobrado</span>'}
+                                </div>
+                            </div>
+                            <span class="shrink-0 px-2 py-1 rounded-lg text-[11px] font-bold ${isUrgent ? 'bg-rose-100 text-rose-800' : 'bg-blue-100 text-blue-800'}">${daysLabel}</span>
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+
+        // Render suppliers list
+        const supList = document.getElementById('modal-notif-suppliers-list');
+        if (supList) {
+            const payables = data.supplier_payables || [];
+            if (!payables.length) {
+                supList.innerHTML = '<p class="text-xs text-slate-400 py-2">No hay vencimientos de proveedores en los próximos 7 días.</p>';
+            } else {
+                supList.innerHTML = payables.map(sp => {
+                    const isOverdue = sp.is_overdue;
+                    const daysLabel = isOverdue ? `Vencida (-${Math.abs(sp.days_left)}d)` : (sp.days_left === 0 ? 'Vence HOY' : `Vence en ${sp.days_left}d`);
+                    return `
+                        <div class="flex items-center justify-between p-3 rounded-xl border ${isOverdue ? 'border-rose-200 bg-rose-50/60' : 'border-amber-200 bg-amber-50/40'} text-xs">
+                            <div class="min-w-0 pr-2">
+                                <div class="flex items-center gap-1.5 font-bold text-slate-900">
+                                    <span>${escapeProfitText(sp.supplier_name)}</span>
+                                    <span class="font-normal text-slate-600 truncate">· ${escapeProfitText(sp.concept)}</span>
+                                </div>
+                                <div class="text-[11px] text-slate-500 mt-0.5">
+                                    Vencimiento: <b>${escapeProfitText(sp.due_date)}</b> · Saldo: <b class="${isOverdue ? 'text-rose-700' : 'text-amber-800'}">${escapeProfitText(sp.currency)} $${sp.balance_due.toLocaleString('es-AR', {minimumFractionDigits: 2})}</b>
+                                    ${sp.booking_number ? `<span class="text-slate-500 ml-1">· Reserva: ${escapeProfitText(sp.booking_number)}</span>` : ''}
+                                </div>
+                            </div>
+                            <span class="shrink-0 px-2 py-1 rounded-lg text-[11px] font-bold ${isOverdue ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800'}">${daysLabel}</span>
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+    } catch (e) {
+        console.error('Error al cargar alertas:', e);
+    }
+}
+
+async function openNotificationsModal() {
+    openModal('modal-notifications');
+    await checkPushSubscriptionStatus();
+    await loadNotificationsSummary();
+    if (window.lucide) lucide.createIcons();
 }

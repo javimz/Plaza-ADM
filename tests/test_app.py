@@ -789,6 +789,54 @@ class TestTravelAgencyApp(unittest.TestCase):
         booking_final = self.client.get(f"/api/bookings/{booking_id}").json()
         self.assertEqual(booking_final["cost_balance"], 0.0)
 
+    def test_20_pwa_and_push_notifications(self):
+        # Test PWA manifest and service worker
+        manifest = self.client.get("/manifest.json")
+        self.assertEqual(manifest.status_code, 200)
+        self.assertIn("Plaza Bohemia ADM", manifest.json()["name"])
+
+        sw = self.client.get("/sw.js")
+        self.assertEqual(sw.status_code, 200)
+        self.assertIn("Service Worker", sw.text)
+
+        # Test VAPID public key
+        vapid_res = self.client.get("/api/notifications/vapid-public-key")
+        self.assertEqual(vapid_res.status_code, 200)
+        public_key = vapid_res.json()["public_key"]
+        self.assertTrue(len(public_key) > 20)
+
+        # Test notifications summary
+        summary_res = self.client.get("/api/notifications/summary")
+        self.assertEqual(summary_res.status_code, 200)
+        summary = summary_res.json()
+        self.assertIn("trip_departures", summary)
+        self.assertIn("supplier_payables", summary)
+        self.assertIn("total_alerts", summary)
+
+        # Test push subscription registration
+        sub_payload = {
+            "endpoint": "https://fcm.googleapis.com/fcm/send/test-token-12345",
+            "keys": {
+                "p256dh": "BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazmgtxOCE3GnKEBgGlU",
+                "auth": "tBHItJI5svbpez7KI4CCXg"
+            },
+            "user_agent": "Mozilla/5.0 Chrome Test"
+        }
+        sub_res = self.client.post("/api/notifications/subscribe", json=sub_payload)
+        self.assertEqual(sub_res.status_code, 200)
+
+        # Check summary reflects active subscription
+        summary_res_2 = self.client.get("/api/notifications/summary")
+        self.assertTrue(summary_res_2.json()["user_has_active_push_subscription"])
+
+        # Test trigger send-alerts endpoint
+        send_res = self.client.post("/api/notifications/send-alerts")
+        self.assertEqual(send_res.status_code, 200)
+
+        # Test unsubscribe
+        unsub_res = self.client.request("DELETE", "/api/notifications/subscribe", json={"endpoint": sub_payload["endpoint"]})
+        self.assertEqual(unsub_res.status_code, 200)
+
 if __name__ == "__main__":
     unittest.main()
 

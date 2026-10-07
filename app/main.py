@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse
 from app.audit import record_activity
 from app.auth import decode_access_token
 from app.database import init_db
-from app.routers import users, clients, suppliers, budgets, bookings, payments, reports, profits, audit, supplier_payables
+from app.routers import users, clients, suppliers, budgets, bookings, payments, reports, profits, audit, supplier_payables, notifications
 
 app = FastAPI(
     title="Sistema de Gestión Administrativo - Plaza Bohemia Viajes",
@@ -28,6 +28,7 @@ app.include_router(reports.router)
 app.include_router(profits.router)
 app.include_router(audit.router)
 app.include_router(supplier_payables.router)
+app.include_router(notifications.router)
 
 
 @app.middleware("http")
@@ -131,12 +132,33 @@ static_dir = os.path.join(os.path.dirname(__file__), "static")
 if os.path.exists(static_dir):
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
+@app.get("/manifest.json")
+def get_manifest():
+    manifest_file = os.path.join(static_dir, "manifest.json")
+    if os.path.exists(manifest_file):
+        return FileResponse(manifest_file, media_type="application/manifest+json")
+    return {"name": "Plaza Bohemia ADM"}
+
+
+@app.get("/sw.js")
+def get_service_worker():
+    sw_file = os.path.join(static_dir, "sw.js")
+    if os.path.exists(sw_file):
+        return FileResponse(
+            sw_file,
+            media_type="application/javascript",
+            headers={"Service-Worker-Allowed": "/"}
+        )
+    return ""
+
+
 @app.get("/")
 def read_root():
     index_file = os.path.join(static_dir, "index.html")
     if os.path.exists(index_file):
         return FileResponse(index_file)
     return {"message": "Sistema de Gestión Administrativo para Agencia de Viajes API activo."}
+
 
 if __name__ == "__main__":
     import uvicorn
