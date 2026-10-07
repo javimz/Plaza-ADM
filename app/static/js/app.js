@@ -2700,6 +2700,23 @@ async function checkPushSubscriptionStatus() {
         toggleBtn.onclick = togglePushNotifications;
 
         if (sub) {
+            // Auto-sync current device subscription with server database
+            try {
+                const subJson = sub.toJSON();
+                if (subJson && subJson.keys) {
+                    apiFetch('/api/notifications/subscribe', 'POST', {
+                        endpoint: subJson.endpoint,
+                        keys: {
+                            p256dh: subJson.keys.p256dh,
+                            auth: subJson.keys.auth
+                        },
+                        user_agent: navigator.userAgent
+                    }).catch(e => console.warn('Sync push sub notice:', e));
+                }
+            } catch (syncErr) {
+                console.warn('Sync error:', syncErr);
+            }
+
             statusDot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse';
             statusTitle.innerText = '✅ Notificaciones Push ACTIVAS en este dispositivo';
             statusDesc.innerText = 'Este celular/navegador está configurado para recibir alertas de salidas de viajes (7 días) y vencimientos de proveedores directamente en la barra de notificaciones.';
@@ -2821,20 +2838,52 @@ async function togglePushNotifications() {
 
 async function testPushNotification() {
     try {
+        const reg = await getServiceWorkerRegistration();
+        const sub = reg ? await reg.pushManager.getSubscription() : null;
+        if (sub) {
+            const subJson = sub.toJSON();
+            if (subJson && subJson.keys) {
+                await apiFetch('/api/notifications/subscribe', 'POST', {
+                    endpoint: subJson.endpoint,
+                    keys: {
+                        p256dh: subJson.keys.p256dh,
+                        auth: subJson.keys.auth
+                    },
+                    user_agent: navigator.userAgent
+                });
+            }
+        }
         const res = await apiFetch('/api/notifications/test', 'POST');
         alert(res.message || 'Notificación de prueba enviada a tu celular.');
     } catch (e) {
         console.error(e);
+        alert(e.message || 'Error al enviar notificación de prueba.');
     }
 }
 
 async function sendPendingAlertsNow() {
     try {
+        const reg = await getServiceWorkerRegistration();
+        const sub = reg ? await reg.pushManager.getSubscription() : null;
+        if (sub) {
+            const subJson = sub.toJSON();
+            if (subJson && subJson.keys) {
+                await apiFetch('/api/notifications/subscribe', 'POST', {
+                    endpoint: subJson.endpoint,
+                    keys: {
+                        p256dh: subJson.keys.p256dh,
+                        auth: subJson.keys.auth
+                    },
+                    user_agent: navigator.userAgent
+                });
+            }
+        }
         const res = await apiFetch('/api/notifications/send-alerts', 'POST');
         alert(res.message || 'Alertas procesadas.');
         await loadNotificationsSummary();
     } catch (e) {
         console.error(e);
+        alert(e.message || 'Error al procesar alertas.');
     }
 }
 
