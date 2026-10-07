@@ -2883,3 +2883,26 @@ async function openNotificationsModal() {
     await loadNotificationsSummary();
     if (window.lucide) lucide.createIcons();
 }
+
+async function forceResetApp() {
+    try {
+        localStorage.clear();
+        sessionStorage.clear();
+        if ('serviceWorker' in navigator) {
+            const regs = await navigator.serviceWorker.getRegistrations();
+            for (const r of regs) {
+                await r.unregister();
+            }
+        }
+        if ('caches' in window) {
+            const keys = await caches.keys();
+            for (const k of keys) {
+                await caches.delete(k);
+            }
+        }
+    } catch (e) {
+        console.error('Error limpiando caché:', e);
+    }
+    window.location.href = window.location.pathname + '?nocache=' + Date.now();
+}
+
