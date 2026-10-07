@@ -113,12 +113,13 @@ async function loginUser(event) {
         loadNotificationsSummary().catch(e => console.error(e));
     } catch (err) {
         console.error('Error en login:', err);
+        const errMsg = err.message || 'No se pudo iniciar sesión. Intente nuevamente.';
         if (error) {
-            error.innerText = err.message || 'No se pudo iniciar sesión. Intente nuevamente.';
+            error.innerText = errMsg;
             error.classList.remove('hidden');
-        } else {
-            alert(err.message || 'No se pudo iniciar sesión.');
+            error.style.display = 'block';
         }
+        alert('Aviso de inicio de sesión:\n' + errMsg);
         if (passwordInput) {
             passwordInput.value = '';
             passwordInput.focus();
