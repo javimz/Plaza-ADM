@@ -180,6 +180,40 @@ def read_root():
     return {"message": "Sistema de Gestión Administrativo para Agencia de Viajes API activo."}
 
 
+import asyncio
+from datetime import datetime
+
+
+async def periodic_alerts_scheduler():
+    """Background loop that automatically dispatches pending 7-day alerts."""
+    await asyncio.sleep(10)  # Wait 10s after startup
+    try:
+        notifications.run_automated_alerts_check()
+    except Exception as e:
+        print(f"Startup alerts check: {e}")
+
+    last_dispatched_day = None
+    while True:
+        try:
+            await asyncio.sleep(1800)  # Check every 30 minutes
+            now = datetime.now()
+            # Send once daily in the morning window (between 09:00 and 10:00 AM)
+            today_str = now.strftime("%Y-%m-%d")
+            if now.hour == 9 and last_dispatched_day != today_str:
+                last_dispatched_day = today_str
+                notifications.run_automated_alerts_check()
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            print(f"Scheduler error: {e}")
+            await asyncio.sleep(60)
+
+
+@app.on_event("startup")
+async def on_startup_scheduler():
+    asyncio.create_task(periodic_alerts_scheduler())
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)

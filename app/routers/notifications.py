@@ -235,6 +235,28 @@ def dispatch_alerts_to_all_subscribers(conn, trip_alerts: List[Dict[str, Any]], 
     return sent_count
 
 
+def run_automated_alerts_check() -> int:
+    """Scans and dispatches push alerts to all subscribed devices."""
+    today = date.today()
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        trip_alerts = get_upcoming_trip_alerts(cursor, today, window_days=7)
+        supplier_alerts = get_supplier_payable_alerts(cursor, today, window_days=7)
+        total = len(trip_alerts) + len(supplier_alerts)
+        if total == 0:
+            logger.info("Automated push alerts: 0 pending alerts for next 7 days.")
+            return 0
+        sent = dispatch_alerts_to_all_subscribers(conn, trip_alerts, supplier_alerts)
+        logger.info(f"Automated push alerts dispatched: {sent} notifications sent for {total} alerts.")
+        return sent
+    except Exception as e:
+        logger.error(f"Error in run_automated_alerts_check: {e}")
+        return 0
+    finally:
+        conn.close()
+
+
 @router.get("/vapid-public-key")
 def get_vapid_public_key():
     """Returns the application server VAPID public key for web push subscription."""
