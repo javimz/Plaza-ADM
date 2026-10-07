@@ -131,8 +131,11 @@ def _describe_api_change(method: str, path: str) -> str:
 static_dir = os.path.join(os.path.dirname(__file__), "static")
 if os.path.exists(static_dir):
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
+    app.mount("/adm/static", StaticFiles(directory=static_dir), name="adm_static")
+
 
 @app.get("/manifest.json")
+@app.get("/adm/manifest.json")
 def get_manifest():
     manifest_file = os.path.join(static_dir, "manifest.json")
     if os.path.exists(manifest_file):
@@ -145,6 +148,7 @@ def get_manifest():
 
 
 @app.get("/sw.js")
+@app.get("/adm/sw.js")
 def get_service_worker():
     sw_file = os.path.join(static_dir, "sw.js")
     if os.path.exists(sw_file):
@@ -160,6 +164,8 @@ def get_service_worker():
 
 
 @app.get("/")
+@app.get("/adm")
+@app.get("/adm/")
 def read_root():
     index_file = os.path.join(static_dir, "index.html")
     if os.path.exists(index_file):

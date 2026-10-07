@@ -2623,7 +2623,9 @@ async function initPWAAndServiceWorker() {
     // 2. Register Service Worker if supported
     if ('serviceWorker' in navigator) {
         try {
-            await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+            const swUrl = (API_BASE ? API_BASE + '/' : '') + 'sw.js';
+            const swScope = (API_BASE ? API_BASE + '/' : '/');
+            await navigator.serviceWorker.register(swUrl, { scope: swScope });
             console.log('[PWA] Service worker registrado correctamente');
         } catch (err) {
             console.warn('[PWA] Error al registrar Service Worker:', err);
@@ -2654,7 +2656,9 @@ async function getServiceWorkerRegistration() {
     if (!('serviceWorker' in navigator)) return null;
     let reg = await navigator.serviceWorker.getRegistration();
     if (!reg) {
-        reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+        const swUrl = (API_BASE ? API_BASE + '/' : '') + 'sw.js';
+        const swScope = (API_BASE ? API_BASE + '/' : '/');
+        reg = await navigator.serviceWorker.register(swUrl, { scope: swScope });
     }
     return reg;
 }

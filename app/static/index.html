@@ -16,12 +16,17 @@
     <link rel="icon" type="image/png" href="static/img/logo.png">
     <link rel="apple-touch-icon" href="static/img/logo.png">
     <!-- PWA Manifest & Mobile Config -->
-    <link rel="manifest" href="/manifest.json">
+    <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2563eb">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Plaza ADM">
+    <script>
+        if (window.location.pathname === '/adm') {
+            window.location.replace('/adm/');
+        }
+    </script>
 </head>
 <body class="bg-slate-50 min-h-screen flex text-slate-800">
 
@@ -1647,6 +1652,6 @@
     </div>
 
     <!-- Application Script -->
-    <script src="static/js/app.js?v=20261007_12"></script>
+    <script src="static/js/app.js?v=20261007_15"></script>
 </body>
 </html>
