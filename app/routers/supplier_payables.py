@@ -234,6 +234,49 @@ def create_supplier_expense(payload: SupplierExpenseCreate, current_user: dict =
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Proveedor no encontrado")
         booking_id, budget_id = _validate_payable_link(cursor, payload.booking_id, payload.budget_id)
+        if booking_id is not None:
+            cursor.execute("""
+                SELECT bk.id, bk.budget_id, COALESCE(b.total_cost, 0) as total_cost,
+                       COALESCE((
+                           SELECT SUM(spp.amount)
+                           FROM supplier_payables sp
+                           JOIN supplier_payments spp ON spp.payable_id = sp.id
+                           WHERE sp.booking_id = bk.id
+                              OR (sp.booking_id IS NULL AND sp.budget_id = bk.budget_id)
+                       ), 0) as supplier_paid_amount
+                FROM bookings bk
+                LEFT JOIN budgets b ON b.id = bk.budget_id
+                WHERE bk.id = ?;
+            """, (booking_id,))
+            bk_cost = cursor.fetchone()
+            if bk_cost and (bk_cost["budget_id"] is not None or float(bk_cost["total_cost"]) > 0):
+                cost_balance = float(bk_cost["total_cost"]) - float(bk_cost["supplier_paid_amount"])
+                if payload.amount > cost_balance + 0.01:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"El monto a pagar al proveedor ({payload.amount:.2f}) supera el saldo costo disponible de la reserva ({cost_balance:.2f})"
+                    )
+        elif budget_id is not None:
+            cursor.execute("""
+                SELECT b.id, COALESCE(b.total_cost, 0) as total_cost,
+                       COALESCE((
+                           SELECT SUM(spp.amount)
+                           FROM supplier_payables sp
+                           JOIN supplier_payments spp ON spp.payable_id = sp.id
+                           WHERE sp.budget_id = b.id
+                       ), 0) as supplier_paid_amount
+                FROM budgets b
+                WHERE b.id = ?;
+            """, (budget_id,))
+            b_cost = cursor.fetchone()
+            if b_cost and float(b_cost["total_cost"]) > 0:
+                cost_balance = float(b_cost["total_cost"]) - float(b_cost["supplier_paid_amount"])
+                if payload.amount > cost_balance + 0.01:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"El monto a pagar al proveedor ({payload.amount:.2f}) supera el saldo costo disponible del presupuesto ({cost_balance:.2f})"
+                    )
+
         cursor.execute("""
             INSERT INTO supplier_payables
                 (supplier_id, concept, invoice_number, currency, total_amount, issue_date, due_date, notes,

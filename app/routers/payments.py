@@ -98,7 +98,7 @@ def register_payment(payload: PaymentCreate, current_user: dict = Depends(get_cu
     balance_due = booking["balance_due"]
     if payload.amount > balance_due + 0.01:
         conn.close()
-        raise HTTPException(status_code=400, detail=f"El monto ({payload.amount}) supera el saldo pendiente de la reserva ({balance_due})")
+        raise HTTPException(status_code=400, detail=f"El monto ({payload.amount:.2f}) supera el saldo restante de la reserva ({balance_due:.2f})")
 
     payment_number = generate_payment_number(conn)
     user_id = current_user.get("id", 1)

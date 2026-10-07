@@ -680,6 +680,115 @@ class TestTravelAgencyApp(unittest.TestCase):
         inv_check = self.client.get(f"/api/supplier-payables/{inv_id}")
         self.assertEqual(inv_check.status_code, 404)
 
+    def test_19_booking_payment_and_cost_balance_validations(self):
+        # 1. Create budget with cost=500 and sale=800, convert to booking
+        created = self.client.post("/api/budgets", json={
+            "client_ids": [1],
+            "title": "Viaje Validación Saldos",
+            "destination": "Madrid",
+            "status": "Borrador",
+            "items": [{
+                "service_type": "Hotel",
+                "description": "Hotel Madrid Centro",
+                "cost_price": 500.0,
+                "sale_price": 800.0,
+                "quantity": 1,
+                "supplier_id": 1,
+            }],
+        })
+        self.assertEqual(created.status_code, 200)
+        budget_id = created.json()["id"]
+
+        conv_res = self.client.post(f"/api/budgets/{budget_id}/convert-to-booking")
+        self.assertEqual(conv_res.status_code, 200)
+        booking_id = conv_res.json()["booking_id"]
+
+        # Fetch booking to check initial balances (balance_due=800, cost_balance=500)
+        booking = self.client.get(f"/api/bookings/{booking_id}").json()
+        self.assertEqual(booking["balance_due"], 800.0)
+        self.assertEqual(booking["cost_balance"], 500.0)
+
+        # 2. Client Payment Validation:
+        # Try to pay 900 (> 800) -> Should fail with 400
+        pay_excess = self.client.post("/api/payments", json={
+            "booking_id": booking_id,
+            "amount": 900.0,
+            "payment_date": str(date.today()),
+            "payment_method": "Efectivo",
+            "concept": "Pago excesivo cliente"
+        })
+        self.assertEqual(pay_excess.status_code, 400)
+        self.assertIn("supera el saldo", pay_excess.json()["detail"])
+
+        # Pay 300 (valid partial payment) -> Should succeed
+        pay_ok = self.client.post("/api/payments", json={
+            "booking_id": booking_id,
+            "amount": 300.0,
+            "payment_date": str(date.today()),
+            "payment_method": "Transferencia",
+            "concept": "Seña 300"
+        })
+        self.assertEqual(pay_ok.status_code, 200)
+
+        # Now balance_due is 500. Try to pay 550 -> Should fail with 400
+        pay_excess_2 = self.client.post("/api/payments", json={
+            "booking_id": booking_id,
+            "amount": 550.0,
+            "payment_date": str(date.today()),
+            "payment_method": "Efectivo"
+        })
+        self.assertEqual(pay_excess_2.status_code, 400)
+
+        # 3. Supplier Expense / Cost Balance Validation:
+        # Cost balance is 500. Try to pay supplier 600 (> 500) -> Should fail with 400
+        sup_excess = self.client.post("/api/supplier-payables/expenses", json={
+            "supplier_id": 1,
+            "concept": "Pago a proveedor excesivo",
+            "amount": 600.0,
+            "payment_date": str(date.today()),
+            "payment_method": "Transferencia",
+            "booking_id": booking_id,
+        })
+        self.assertEqual(sup_excess.status_code, 400)
+        self.assertIn("supera el saldo costo", sup_excess.json()["detail"])
+
+        # Pay supplier 200 (valid expense) -> Should succeed
+        sup_ok = self.client.post("/api/supplier-payables/expenses", json={
+            "supplier_id": 1,
+            "concept": "Pago parcial hotel",
+            "amount": 200.0,
+            "payment_date": str(date.today()),
+            "payment_method": "Transferencia",
+            "booking_id": booking_id,
+        })
+        self.assertEqual(sup_ok.status_code, 200)
+
+        # Now supplier cost balance is 300. Try to pay supplier 350 -> Should fail with 400
+        sup_excess_2 = self.client.post("/api/supplier-payables/expenses", json={
+            "supplier_id": 1,
+            "concept": "Segundo pago excesivo",
+            "amount": 350.0,
+            "payment_date": str(date.today()),
+            "payment_method": "Transferencia",
+            "booking_id": booking_id,
+        })
+        self.assertEqual(sup_excess_2.status_code, 400)
+
+        # Pay exact remaining cost balance (300) -> Should succeed
+        sup_final = self.client.post("/api/supplier-payables/expenses", json={
+            "supplier_id": 1,
+            "concept": "Pago final hotel",
+            "amount": 300.0,
+            "payment_date": str(date.today()),
+            "payment_method": "Transferencia",
+            "booking_id": booking_id,
+        })
+        self.assertEqual(sup_final.status_code, 200)
+
+        # Check booking cost balance is now 0
+        booking_final = self.client.get(f"/api/bookings/{booking_id}").json()
+        self.assertEqual(booking_final["cost_balance"], 0.0)
+
 if __name__ == "__main__":
     unittest.main()
 

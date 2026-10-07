@@ -1719,7 +1719,30 @@ function togglePaymentPartyFields() {
     document.getElementById('payment-client-field').classList.toggle('hidden', isSupplier);
     document.getElementById('payment-supplier-field').classList.toggle('hidden', !isSupplier);
     document.getElementById('payment-supplier-id').required = isSupplier;
-    if (isSupplier) document.getElementById('payment-amount').value = '';
+
+    const bookingId = parseInt(document.getElementById('payment-booking-id').value);
+    const booking = bookingsCache.find(b => b.id === bookingId);
+    if (booking) {
+        const balanceLabel = document.getElementById('pay-modal-balance-label');
+        const balanceDue = document.getElementById('pay-modal-balance-due');
+        if (isSupplier) {
+            if (balanceLabel) balanceLabel.innerText = 'Saldo Costo Proveedor:';
+            const costBal = Math.max(0, Number(booking.cost_balance || 0));
+            if (balanceDue) {
+                balanceDue.innerText = `${booking.currency} $ ${costBal.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+                balanceDue.className = costBal <= 0 ? 'text-slate-500 font-bold' : 'text-rose-600 font-bold';
+            }
+            document.getElementById('payment-amount').value = costBal > 0 ? costBal.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '';
+        } else {
+            if (balanceLabel) balanceLabel.innerText = 'Saldo Restante Cliente:';
+            const clientBal = Math.max(0, Number(booking.balance_due || 0));
+            if (balanceDue) {
+                balanceDue.innerText = `${booking.currency} $ ${clientBal.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+                balanceDue.className = clientBal <= 0 ? 'text-slate-500 font-bold' : 'text-amber-600 font-bold';
+            }
+            document.getElementById('payment-amount').value = clientBal > 0 ? clientBal.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '';
+        }
+    }
 }
 
 async function openPaymentModal(bookingId, partyType = 'Cliente') {
@@ -1750,13 +1773,11 @@ async function openPaymentModal(bookingId, partyType = 'Cliente') {
     document.getElementById('payment-booking-id').value = booking.id;
     document.getElementById('pay-modal-booking-title').innerText = `${booking.booking_number} - ${booking.title}`;
     document.getElementById('pay-modal-client-name').innerText = `Clientes: ${booking.client_name}`;
-    document.getElementById('pay-modal-balance-due').innerText = `${booking.currency} $ ${booking.balance_due.toLocaleString('es-AR', {minimumFractionDigits: 2})}`;
     document.getElementById('payment-party-type').value = partyType;
     document.getElementById('payment-party-type').querySelector('option[value="Proveedor"]').hidden = !canManageSupplierPayables();
     document.getElementById('payment-supplier-id').value = '';
     togglePaymentPartyFields();
 
-    document.getElementById('payment-amount').value = partyType === 'Cliente' ? (booking.balance_due ? booking.balance_due.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '') : '';
     document.getElementById('payment-date').value = localDateString();
     document.getElementById('payment-concept').value = '';
     document.getElementById('payment-reference').value = '';
@@ -1767,52 +1788,86 @@ async function openPaymentModal(bookingId, partyType = 'Cliente') {
 
 async function savePayment(e) {
     e.preventDefault();
-    const booking = bookingsCache.find(item => item.id === parseInt(document.getElementById('payment-booking-id').value));
+    const bookingId = parseInt(document.getElementById('payment-booking-id').value);
+    const booking = bookingsCache.find(item => item.id === bookingId);
+    if (!booking) return;
+
     const amount = parseCurrencyInput(document.getElementById('payment-amount').value);
     const paymentDate = document.getElementById('payment-date').value;
     const paymentMethod = document.getElementById('payment-method').value;
     const concept = document.getElementById('payment-concept').value.trim();
     const reference = document.getElementById('payment-reference').value.trim();
     const notes = document.getElementById('payment-notes').value.trim();
-    const selectedClientId = parseInt(document.getElementById('payment-client-id').value);
+    const isSupplier = document.getElementById('payment-party-type').value === 'Proveedor';
 
-    if (document.getElementById('payment-party-type').value === 'Proveedor') {
-        if (!booking) return;
-        await apiFetch('/api/supplier-payables/expenses', 'POST', {
-            supplier_id: parseInt(document.getElementById('payment-supplier-id').value),
-            concept: concept || notes || `Gasto de reserva ${booking.booking_number}`,
-            invoice_number: reference,
-            currency: booking.currency,
-            amount,
-            payment_date: paymentDate,
-            payment_method: paymentMethod,
-            reference,
-            notes,
-            booking_id: booking.id,
-            budget_id: booking.budget_id || null,
-        });
-        closeModal('modal-payment');
-        await Promise.all([loadBookings(), loadPaymentsHistory(), loadSupplierPayables()]);
+    if (isNaN(amount) || amount <= 0) {
+        alert('El monto del pago debe ser mayor a 0.');
         return;
     }
 
-    const payload = {
-        booking_id: booking.id,
-        client_id: selectedClientId || booking.client_id,
-        amount,
-        payment_date: paymentDate,
-        payment_method: paymentMethod,
-        concept,
-        reference_code: reference,
-        notes
-    };
+    if (isSupplier) {
+        const supplierId = parseInt(document.getElementById('payment-supplier-id').value);
+        if (!supplierId) {
+            alert('Por favor seleccione un proveedor.');
+            return;
+        }
 
-    const paymentRes = await apiFetch('/api/payments', 'POST', payload);
-    closeModal('modal-payment');
+        const costBalance = Number(booking.cost_balance || 0);
+        if (amount > costBalance + 0.01) {
+            alert(`Error: El pago al proveedor ($ ${amount.toLocaleString('es-AR', {minimumFractionDigits: 2})}) supera el Saldo Costo de la reserva ($ ${costBalance.toLocaleString('es-AR', {minimumFractionDigits: 2})}).`);
+            return;
+        }
 
-    // Show receipt modal
-    showReceiptModal(paymentRes.id);
-    loadBookings();
+        try {
+            await apiFetch('/api/supplier-payables/expenses', 'POST', {
+                supplier_id: supplierId,
+                concept: concept || notes || `Gasto de reserva ${booking.booking_number}`,
+                invoice_number: reference,
+                currency: booking.currency,
+                amount,
+                payment_date: paymentDate,
+                payment_method: paymentMethod,
+                reference,
+                notes,
+                booking_id: booking.id,
+                budget_id: booking.budget_id || null,
+            });
+            closeModal('modal-payment');
+            await refreshAfterFinancialChange();
+        } catch (err) {
+            console.error(err);
+        }
+        return;
+    }
+
+    const clientBalance = Number(booking.balance_due || 0);
+    if (amount > clientBalance + 0.01) {
+        alert(`Error: El cobro al cliente ($ ${amount.toLocaleString('es-AR', {minimumFractionDigits: 2})}) supera el Saldo Restante de la reserva ($ ${clientBalance.toLocaleString('es-AR', {minimumFractionDigits: 2})}).`);
+        return;
+    }
+
+    try {
+        const selectedClientId = parseInt(document.getElementById('payment-client-id').value);
+        const payload = {
+            booking_id: booking.id,
+            client_id: selectedClientId || booking.client_id,
+            amount,
+            payment_date: paymentDate,
+            payment_method: paymentMethod,
+            concept,
+            reference_code: reference,
+            notes
+        };
+
+        const paymentRes = await apiFetch('/api/payments', 'POST', payload);
+        closeModal('modal-payment');
+
+        // Show receipt modal
+        showReceiptModal(paymentRes.id);
+        await refreshAfterFinancialChange();
+    } catch (err) {
+        console.error(err);
+    }
 }
 
 async function showReceiptModal(paymentId) {
