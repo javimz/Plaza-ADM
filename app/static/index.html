@@ -968,7 +968,7 @@
 
                 <div>
                     <label class="block text-xs font-semibold text-slate-700 mb-1">Monto a Pagar *</label>
-                    <input type="number" step="0.01" id="payment-amount" required placeholder="0.00" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                    <input type="text" inputmode="decimal" id="payment-amount" required placeholder="0,00" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none" onblur="handleCurrencyBlur(this)">
                 </div>
 
                 <div>
@@ -1381,7 +1381,7 @@
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div><label for="sp-currency" class="block text-xs font-semibold text-slate-700 mb-1">Moneda</label><select id="sp-currency" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500"><option>USD</option><option>ARS</option><option>EUR</option></select></div>
-                    <div><label for="sp-total" class="block text-xs font-semibold text-slate-700 mb-1">Importe total *</label><input id="sp-total" type="number" min="0.01" step="0.01" required placeholder="0.00" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"></div>
+                    <div><label for="sp-total" class="block text-xs font-semibold text-slate-700 mb-1">Importe total *</label><input id="sp-total" type="text" inputmode="decimal" required placeholder="0,00" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500" onblur="handleCurrencyBlur(this)"></div>
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div><label for="sp-issue-date" class="block text-xs font-semibold text-slate-700 mb-1">Fecha de emisión *</label><input id="sp-issue-date" type="date" required class="w-full p-2.5 border border-slate-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"></div>
@@ -1406,7 +1406,7 @@
             <div class="flex justify-between items-center rounded-xl bg-amber-50 border border-amber-200 p-3"><span class="text-xs font-semibold text-amber-800">Saldo pendiente</span><strong id="supplier-payment-balance" class="text-amber-900"></strong></div>
             <form id="form-supplier-payment" onsubmit="saveSupplierPayment(event)" class="space-y-4">
                 <input type="hidden" id="supplier-payment-payable-id">
-                <div><label for="supplier-payment-amount" class="block text-xs font-semibold text-slate-700 mb-1">Importe a pagar *</label><input id="supplier-payment-amount" type="number" min="0.01" step="0.01" required placeholder="0.00" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"></div>
+                <div><label for="supplier-payment-amount" class="block text-xs font-semibold text-slate-700 mb-1">Importe a pagar *</label><input id="supplier-payment-amount" type="text" inputmode="decimal" required placeholder="0,00" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500" onblur="handleCurrencyBlur(this)"></div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div><label for="supplier-payment-date" class="block text-xs font-semibold text-slate-700 mb-1">Fecha de pago *</label><input id="supplier-payment-date" type="date" required class="w-full p-2.5 border border-slate-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"></div>
                     <div><label for="supplier-payment-method" class="block text-xs font-semibold text-slate-700 mb-1">Método *</label><select id="supplier-payment-method" required class="w-full p-2.5 border border-slate-300 rounded-xl text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500"><option>Transferencia</option><option>Efectivo</option><option>Tarjeta</option><option>MercadoPago</option><option>Cheque</option><option>Otro</option></select></div>
@@ -1543,6 +1543,6 @@
     </div>
 
     <!-- Application Script -->
-    <script src="static/js/app.js?v=20261003_4"></script>
+    <script src="static/js/app.js?v=20261007_5"></script>
 </body>
 </html>

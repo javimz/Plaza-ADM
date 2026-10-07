@@ -508,7 +508,7 @@ async function saveSupplierPayable(event) {
         concept: document.getElementById('sp-concept').value.trim(),
         invoice_number: document.getElementById('sp-invoice').value.trim(),
         currency: document.getElementById('sp-currency').value,
-        total_amount: parseFloat(document.getElementById('sp-total').value),
+        total_amount: parseCurrencyInput(document.getElementById('sp-total').value),
         issue_date: document.getElementById('sp-issue-date').value,
         due_date: document.getElementById('sp-due-date').value,
         notes: document.getElementById('sp-notes').value.trim(),
@@ -531,8 +531,7 @@ function openSupplierPaymentModal(payableId) {
     document.getElementById('supplier-payment-subtitle').innerText = `${payable.supplier_name} · ${payable.concept}`;
     document.getElementById('supplier-payment-balance').innerText = formatProfitAmount(payable.currency, payable.balance_due);
     const amount = document.getElementById('supplier-payment-amount');
-    amount.max = payable.balance_due.toFixed(2);
-    amount.value = payable.balance_due.toFixed(2);
+    amount.value = payable.balance_due ? payable.balance_due.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '';
     document.getElementById('supplier-payment-date').value = localDateString();
     openModal('modal-supplier-payment');
 }
@@ -541,7 +540,7 @@ async function saveSupplierPayment(event) {
     event.preventDefault();
     const payableId = document.getElementById('supplier-payment-payable-id').value;
     const payload = {
-        amount: parseFloat(document.getElementById('supplier-payment-amount').value),
+        amount: parseCurrencyInput(document.getElementById('supplier-payment-amount').value),
         payment_date: document.getElementById('supplier-payment-date').value,
         payment_method: document.getElementById('supplier-payment-method').value,
         reference: document.getElementById('supplier-payment-reference').value.trim(),
@@ -568,6 +567,63 @@ async function showSupplierPayableDetails(payableId) {
             <tr class="border-b border-slate-100"><td class="p-3">${escapeProfitText(payment.payment_date)}</td><td class="p-3 text-right font-semibold text-emerald-700">${formatProfitAmount(payable.currency, payment.amount)}</td><td class="p-3">${escapeProfitText(payment.payment_method)}</td><td class="p-3">${escapeProfitText(payment.reference || '-')}</td><td class="p-3">${escapeProfitText(payment.registered_by_name || '-')}</td><td class="p-3">${escapeProfitText(payment.notes || '-')}</td></tr>`).join('') : '<tr><td colspan="6" class="p-5 text-center text-slate-400">Todavía no hay pagos registrados para esta cuenta.</td></tr>';
         openModal('modal-supplier-payable-detail');
     } catch (e) { console.error(e); }
+}
+
+// PARSERS & FORMATTERS MONETARIOS
+function parseCurrencyInput(value) {
+    if (value === null || value === undefined) return 0.0;
+    if (typeof value === 'number') return isNaN(value) ? 0.0 : value;
+    let str = String(value).trim();
+    if (!str) return 0.0;
+
+    // Remover signos de monedas y espacios
+    str = str.replace(/[$€£\s]/g, '');
+
+    const lastComma = str.lastIndexOf(',');
+    const lastDot = str.lastIndexOf('.');
+
+    if (lastComma !== -1 && lastDot !== -1) {
+        if (lastComma > lastDot) {
+            // Formato español/argentino (p. ej. 5.259.638,70): puntos son miles, coma es decimal
+            str = str.replace(/\./g, '').replace(',', '.');
+        } else {
+            // Formato inglés/US (p. ej. 5,259,638.70): comas son miles, punto es decimal
+            str = str.replace(/,/g, '');
+        }
+    } else if (lastComma !== -1) {
+        const commaCount = (str.match(/,/g) || []).length;
+        if (commaCount === 1) {
+            // Una sola coma (p. ej. 5259638,70 o 1500,5): coma decimal
+            str = str.replace(',', '.');
+        } else {
+            // Múltiples comas (p. ej. 5,259,638): separador de miles
+            str = str.replace(/,/g, '');
+        }
+    } else if (lastDot !== -1) {
+        const dotCount = (str.match(/\./g) || []).length;
+        if (dotCount > 1) {
+            // Múltiples puntos (p. ej. 5.259.638): separador de miles
+            str = str.replace(/\./g, '');
+        }
+    }
+
+    const num = parseFloat(str);
+    return isNaN(num) ? 0.0 : num;
+}
+
+function formatCurrencyInput(value) {
+    if (value === '' || value === null || value === undefined) return '';
+    const num = typeof value === 'number' ? value : parseCurrencyInput(value);
+    if (isNaN(num)) return '';
+    return num.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function handleCurrencyBlur(input) {
+    if (!input) return;
+    const raw = input.value.trim();
+    if (!raw) return;
+    const num = parseCurrencyInput(raw);
+    input.value = num.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 // GANANCIAS Y DISTRIBUCIONES
@@ -1287,12 +1343,19 @@ function addBudgetItemRow(item = {}) {
     const container = document.getElementById('budget-items-container');
     const rowId = 'item-row-' + Date.now() + '-' + Math.floor(Math.random()*1000);
 
-    const suppliersOpts = suppliersCache.map(s => `<option value="${s.id}" ${item.supplier_id === s.id ? 'selected' : ''}>${s.name}</option>`).join('');
+    const suppliersOpts = suppliersCache.map(s => `<option value="${s.id}" ${item.supplier_id === s.id ? 'selected' : ''}>${escapeProfitText(s.name)}</option>`).join('');
+
+    const costVal = (item.cost_price !== undefined && item.cost_price !== null && item.cost_price !== '') 
+        ? formatCurrencyInput(item.cost_price)
+        : '';
+    const saleVal = (item.sale_price !== undefined && item.sale_price !== null && item.sale_price !== '') 
+        ? formatCurrencyInput(item.sale_price)
+        : '';
 
     const html = `
         <div id="${rowId}" class="grid grid-cols-12 gap-2 items-center bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-xs">
             <div class="col-span-2">
-                <select class="item-type w-full p-2 border border-slate-300 rounded-lg outline-none">
+                <select class="item-type w-full p-2 border border-slate-300 rounded-lg outline-none bg-white">
                     <option value="Vuelo" ${item.service_type === 'Vuelo' ? 'selected' : ''}>Vuelo</option>
                     <option value="Hotel" ${item.service_type === 'Hotel' ? 'selected' : ''}>Hotel</option>
                     <option value="Tour" ${item.service_type === 'Tour' ? 'selected' : ''}>Tour / Excursión</option>
@@ -1302,19 +1365,19 @@ function addBudgetItemRow(item = {}) {
                 </select>
             </div>
             <div class="col-span-3">
-                <input type="text" class="item-desc w-full p-2 border border-slate-300 rounded-lg outline-none" placeholder="Descripción del servicio" value="${item.description || ''}">
+                <input type="text" class="item-desc w-full p-2 border border-slate-300 rounded-lg outline-none bg-white" placeholder="Descripción del servicio" value="${escapeProfitText(item.description || '')}">
             </div>
             <div class="col-span-2">
-                <select class="item-supplier w-full p-2 border border-slate-300 rounded-lg outline-none">
+                <select class="item-supplier w-full p-2 border border-slate-300 rounded-lg outline-none bg-white">
                     <option value="">-- Proveedor --</option>
                     ${suppliersOpts}
                 </select>
             </div>
             <div class="col-span-2">
-                <input type="number" step="0.01" class="item-cost w-full p-2 border border-slate-300 rounded-lg outline-none" placeholder="Costo" value="${item.cost_price || ''}">
+                <input type="text" inputmode="decimal" class="item-cost w-full p-2 border border-slate-300 rounded-lg outline-none bg-white text-right font-medium" placeholder="Costo" value="${costVal}" onblur="handleCurrencyBlur(this)">
             </div>
             <div class="col-span-2">
-                <input type="number" step="0.01" class="item-sale w-full p-2 border border-slate-300 rounded-lg outline-none" placeholder="Venta" value="${item.sale_price || ''}">
+                <input type="text" inputmode="decimal" class="item-sale w-full p-2 border border-slate-300 rounded-lg outline-none bg-white text-right font-medium" placeholder="Venta" value="${saleVal}" onblur="handleCurrencyBlur(this)">
             </div>
             <div class="col-span-1 text-center">
                 <button type="button" onclick="document.getElementById('${rowId}').remove()" class="text-rose-500 hover:text-rose-700 p-1"><i data-lucide="trash" class="w-4 h-4"></i></button>
@@ -1341,8 +1404,8 @@ async function saveBudget(e) {
         service_type: row.querySelector('.item-type').value,
         description: row.querySelector('.item-desc').value,
         supplier_id: row.querySelector('.item-supplier').value ? parseInt(row.querySelector('.item-supplier').value) : null,
-        cost_price: parseFloat(row.querySelector('.item-cost').value) || 0.0,
-        sale_price: parseFloat(row.querySelector('.item-sale').value) || 0.0,
+        cost_price: parseCurrencyInput(row.querySelector('.item-cost').value),
+        sale_price: parseCurrencyInput(row.querySelector('.item-sale').value),
         quantity: 1
     }));
 
@@ -1655,7 +1718,7 @@ async function openPaymentModal(bookingId, partyType = 'Cliente') {
     document.getElementById('payment-supplier-id').value = '';
     togglePaymentPartyFields();
 
-    document.getElementById('payment-amount').value = partyType === 'Cliente' ? booking.balance_due : '';
+    document.getElementById('payment-amount').value = partyType === 'Cliente' ? (booking.balance_due ? booking.balance_due.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '') : '';
     document.getElementById('payment-date').value = localDateString();
     document.getElementById('payment-concept').value = '';
     document.getElementById('payment-reference').value = '';
@@ -1667,7 +1730,7 @@ async function openPaymentModal(bookingId, partyType = 'Cliente') {
 async function savePayment(e) {
     e.preventDefault();
     const booking = bookingsCache.find(item => item.id === parseInt(document.getElementById('payment-booking-id').value));
-    const amount = parseFloat(document.getElementById('payment-amount').value);
+    const amount = parseCurrencyInput(document.getElementById('payment-amount').value);
     const paymentDate = document.getElementById('payment-date').value;
     const paymentMethod = document.getElementById('payment-method').value;
     const concept = document.getElementById('payment-concept').value.trim();
