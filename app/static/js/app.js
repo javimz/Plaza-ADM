@@ -2544,20 +2544,44 @@ async function initPWAAndServiceWorker() {
         if (installBtn) installBtn.classList.add('hidden');
     });
 
-    // 2. Register Service Worker
+async function initPWAAndServiceWorker() {
+    // 1. Handle PWA install prompt for mobile & desktop
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredPWAInstallPrompt = e;
+        const installBtn = document.getElementById('pwa-install-btn');
+        if (installBtn) {
+            installBtn.classList.remove('hidden');
+            installBtn.classList.add('flex');
+            if (window.lucide) lucide.createIcons();
+        }
+    });
+
+    window.addEventListener('appinstalled', () => {
+        deferredPWAInstallPrompt = null;
+        const installBtn = document.getElementById('pwa-install-btn');
+        if (installBtn) installBtn.classList.add('hidden');
+    });
+
+    // 2. Register Service Worker if supported
     if ('serviceWorker' in navigator) {
         try {
-            const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
-            checkPushSubscriptionStatus();
+            await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+            console.log('[PWA] Service worker registrado correctamente');
         } catch (err) {
-            console.warn('Registro de Service Worker:', err);
+            console.warn('[PWA] Error al registrar Service Worker:', err);
         }
     }
 }
 
 async function installPWAApp() {
     if (!deferredPWAInstallPrompt) {
-        alert('Para instalar en iPhone/iPad: toca el botón Compartir de Safari y selecciona "Agregar a pantalla de inicio". En Android, abre el menú de Chrome y elige "Instalar aplicación".');
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+        if (isIOS) {
+            alert('Para instalar en iPhone/iPad:\n1. Toca el botón Compartir de Safari (icono con flecha hacia arriba).\n2. Selecciona "Agregar a pantalla de inicio".\n3. Abre la app desde tu pantalla de inicio.');
+        } else {
+            alert('Para instalar en Android:\n1. Abre el menú de Chrome (3 puntos arriba a la derecha).\n2. Toca "Instalar aplicación" o "Agregar a la pantalla principal".');
+        }
         return;
     }
     deferredPWAInstallPrompt.prompt();
@@ -2569,6 +2593,15 @@ async function installPWAApp() {
     deferredPWAInstallPrompt = null;
 }
 
+async function getServiceWorkerRegistration() {
+    if (!('serviceWorker' in navigator)) return null;
+    let reg = await navigator.serviceWorker.getRegistration();
+    if (!reg) {
+        reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+    }
+    return reg;
+}
+
 async function checkPushSubscriptionStatus() {
     const statusDot = document.getElementById('push-status-dot');
     const statusTitle = document.getElementById('push-status-title');
@@ -2576,10 +2609,35 @@ async function checkPushSubscriptionStatus() {
     const toggleBtn = document.getElementById('push-toggle-btn');
     if (!statusDot || !toggleBtn) return;
 
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+
+    if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+        statusDot.className = 'w-2.5 h-2.5 rounded-full bg-amber-500';
+        statusTitle.innerText = 'Se requiere conexión segura HTTPS';
+        statusDesc.innerText = 'Los navegadores bloquean las notificaciones push en HTTP inseguro. Accede a través de https:// para habilitar alertas.';
+        toggleBtn.innerHTML = '<i data-lucide="shield-alert" class="w-4 h-4"></i> Requiere HTTPS';
+        toggleBtn.className = 'shrink-0 px-4 py-2 text-xs font-bold bg-amber-100 text-amber-800 rounded-xl cursor-default';
+        if (window.lucide) lucide.createIcons();
+        return;
+    }
+
+    if (isIOS && !isStandalone) {
+        statusDot.className = 'w-2.5 h-2.5 rounded-full bg-blue-500';
+        statusTitle.innerText = '📱 En iPhone: Agrega la App a la Pantalla de Inicio';
+        statusDesc.innerText = 'Apple exige que abras la app desde el acceso directo de la pantalla de inicio (Compartir > Agregar a pantalla de inicio) para permitir notificaciones push.';
+        toggleBtn.innerHTML = '<i data-lucide="smartphone" class="w-4 h-4"></i> Ver Cómo Instalar';
+        toggleBtn.disabled = false;
+        toggleBtn.onclick = installPWAApp;
+        toggleBtn.className = 'shrink-0 px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-sm transition flex items-center justify-center gap-1.5';
+        if (window.lucide) lucide.createIcons();
+        return;
+    }
+
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
         statusDot.className = 'w-2.5 h-2.5 rounded-full bg-slate-400';
         statusTitle.innerText = 'Notificaciones Push no soportadas';
-        statusDesc.innerText = 'Tu navegador no soporta el estándar Web Push o está en modo incógnito/privado.';
+        statusDesc.innerText = 'Este navegador no tiene soporte para Web Push o está en modo incógnito/privado.';
         toggleBtn.classList.add('hidden');
         return;
     }
@@ -2587,7 +2645,7 @@ async function checkPushSubscriptionStatus() {
     if (Notification.permission === 'denied') {
         statusDot.className = 'w-2.5 h-2.5 rounded-full bg-rose-500';
         statusTitle.innerText = 'Notificaciones Bloqueadas en el Navegador';
-        statusDesc.innerText = 'Los permisos de notificación están bloqueados. Habilítalos en la configuración del navegador para este sitio.';
+        statusDesc.innerText = 'Los permisos de notificación fueron bloqueados. Ve a la configuración de tu navegador (icono del candado al lado del link) y permite las notificaciones para este sitio.';
         toggleBtn.innerText = 'Permisos Bloqueados';
         toggleBtn.disabled = true;
         toggleBtn.className = 'shrink-0 px-4 py-2 text-xs font-bold bg-slate-300 text-slate-500 rounded-xl cursor-not-allowed';
@@ -2595,8 +2653,10 @@ async function checkPushSubscriptionStatus() {
     }
 
     try {
-        const reg = await navigator.serviceWorker.ready;
-        const sub = await reg.pushManager.getSubscription();
+        const reg = await getServiceWorkerRegistration();
+        const sub = reg ? await reg.pushManager.getSubscription() : null;
+
+        toggleBtn.onclick = togglePushNotifications;
 
         if (sub) {
             statusDot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse';
@@ -2620,17 +2680,43 @@ async function checkPushSubscriptionStatus() {
 }
 
 async function togglePushNotifications() {
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-        return alert('Las notificaciones Web Push no están disponibles en este navegador.');
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+
+    if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+        return alert('Las notificaciones móviles push requieren ingresar a través de conexión segura HTTPS.');
+    }
+
+    if (isIOS && !isStandalone) {
+        return installPWAApp();
+    }
+
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+        return alert('Las notificaciones Web Push no están disponibles en este navegador o modo de navegación.');
+    }
+
+    const toggleBtn = document.getElementById('push-toggle-btn');
+    const originalHtml = toggleBtn ? toggleBtn.innerHTML : '';
+    if (toggleBtn) {
+        toggleBtn.disabled = true;
+        toggleBtn.innerText = 'Procesando...';
     }
 
     try {
-        const reg = await navigator.serviceWorker.ready;
+        const reg = await getServiceWorkerRegistration();
+        if (!reg) throw new Error('No se pudo inicializar el Service Worker en este navegador.');
+
         const currentSub = await reg.pushManager.getSubscription();
 
         if (currentSub) {
-            // Unsubscribe
-            if (!confirm('¿Desea desactivar las notificaciones push en este dispositivo?')) return;
+            // Unsubscribe flow
+            if (!confirm('¿Desea desactivar las notificaciones push en este dispositivo?')) {
+                if (toggleBtn) {
+                    toggleBtn.disabled = false;
+                    toggleBtn.innerHTML = originalHtml;
+                }
+                return;
+            }
             const endpoint = currentSub.endpoint;
             await currentSub.unsubscribe();
             try {
@@ -2641,15 +2727,27 @@ async function togglePushNotifications() {
             return;
         }
 
-        // Subscribe flow
-        const permission = await Notification.requestPermission();
+        // Request Permission
+        let permission = Notification.permission;
         if (permission !== 'granted') {
-            alert('No se otorgaron permisos para enviar notificaciones.');
+            permission = await new Promise((resolve) => {
+                const res = Notification.requestPermission(resolve);
+                if (res && typeof res.then === 'function') {
+                    res.then(resolve);
+                }
+            });
+        }
+
+        if (permission !== 'granted') {
+            alert('Permiso de notificaciones denegado. Para activarlo, habilita los permisos de notificaciones en la barra de direcciones de tu navegador.');
             await checkPushSubscriptionStatus();
             return;
         }
 
+        // Fetch VAPID key
         const vapidData = await apiFetch('/api/notifications/vapid-public-key');
+        if (!vapidData || !vapidData.public_key) throw new Error('No se pudo obtener la clave VAPID del servidor.');
+
         const convertedVapidKey = urlBase64ToUint8Array(vapidData.public_key);
 
         const newSub = await reg.pushManager.subscribe({
@@ -2673,6 +2771,10 @@ async function togglePushNotifications() {
     } catch (err) {
         console.error(err);
         alert('No se pudo activar las notificaciones: ' + (err.message || err));
+        await checkPushSubscriptionStatus();
+    } finally {
+        if (toggleBtn) toggleBtn.disabled = false;
+        if (window.lucide) lucide.createIcons();
     }
 }
 
