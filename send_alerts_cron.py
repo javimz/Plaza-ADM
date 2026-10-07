@@ -1,7 +1,7 @@
 """
 CLI script to run automated alert dispatches via Cron or directly.
-Example crontab entry (daily at 9:00 AM):
-0 9 * * * cd /var/www/adm-app && ./venv/bin/python send_alerts_cron.py >> /var/log/plaza_alerts_cron.log 2>&1
+Example crontab entry (daily at 11:00 and 14:00):
+0 11,14 * * * cd /var/www/adm-app && ./venv/bin/python send_alerts_cron.py >> /var/log/plaza_alerts_cron.log 2>&1
 """
 import sys
 import os

@@ -185,28 +185,29 @@ from datetime import datetime
 
 
 async def periodic_alerts_scheduler():
-    """Background loop that automatically dispatches pending 7-day alerts."""
-    await asyncio.sleep(10)  # Wait 10s after startup
+    """Background loop that automatically dispatches pending 7-day alerts at startup, 11:00 and 14:00."""
+    await asyncio.sleep(5)  # Run immediately 5s after startup/restart
     try:
         notifications.run_automated_alerts_check()
     except Exception as e:
-        print(f"Startup alerts check: {e}")
+        print(f"Startup alerts check error: {e}")
 
-    last_dispatched_day = None
+    last_dispatched_slot = None
     while True:
         try:
-            await asyncio.sleep(1800)  # Check every 30 minutes
+            await asyncio.sleep(60)  # Check every minute
             now = datetime.now()
-            # Send once daily in the morning window (between 09:00 and 10:00 AM)
-            today_str = now.strftime("%Y-%m-%d")
-            if now.hour == 9 and last_dispatched_day != today_str:
-                last_dispatched_day = today_str
-                notifications.run_automated_alerts_check()
+            # Target hours: 11 (11:00 AM) and 14 (02:00 PM)
+            if now.hour in (11, 14):
+                current_slot = f"{now.strftime('%Y-%m-%d')}_{now.hour}"
+                if last_dispatched_slot != current_slot:
+                    last_dispatched_slot = current_slot
+                    notifications.run_automated_alerts_check()
         except asyncio.CancelledError:
             break
         except Exception as e:
-            print(f"Scheduler error: {e}")
-            await asyncio.sleep(60)
+            print(f"Scheduler loop error: {e}")
+            await asyncio.sleep(30)
 
 
 @app.on_event("startup")
