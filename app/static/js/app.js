@@ -59,12 +59,12 @@ async function loginUser(event) {
         applyRolePermissions();
         document.getElementById('login-password').value = '';
         document.getElementById('login-screen').classList.add('hidden');
+        const initialTab = (ROLE_ALLOWED_TABS[currentUser.role] || ['budgets'])[0];
+        switchTab(initialTab);
         loadClientsCache();
         loadSuppliersCache();
         loadSalespeopleCache();
         loadNotificationsSummary();
-        const initialTab = (ROLE_ALLOWED_TABS[currentUser.role] || ['budgets'])[0];
-        switchTab(initialTab);
     } catch (err) {
         error.innerText = err.message || 'No se pudo iniciar sesión. Intente nuevamente.';
         error.classList.remove('hidden');
