@@ -2,20 +2,21 @@
   "name": "Plaza Bohemia ADM",
   "short_name": "Plaza ADM",
   "description": "Sistema de Gestión Administrativa de Viajes, Reservas, Pagos y Alertas",
-  "start_url": "/",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "orientation": "portrait-primary",
   "background_color": "#0f172a",
   "theme_color": "#2563eb",
   "icons": [
     {
-      "src": "/static/img/logo.png",
+      "src": "static/img/logo.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "/static/img/logo.png",
+      "src": "static/img/logo.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
