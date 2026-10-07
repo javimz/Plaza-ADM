@@ -735,9 +735,8 @@ function formatProfitTotals(byCurrency, key, fallback = 0) {
 }
 
 function escapeProfitText(value) {
-    return String(value ?? '').replace(/[&<>"']/g, char => ({
-        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-    })[char]);
+    const map = { "&": "&amp;", "<": "&lt;", ">": "&gt;", "\x22": "&quot;", "\x27": "&#39;" };
+    return String(value != null ? value : '').replace(/[&<>"']/g, char => map[char]);
 }
 
 async function loadProfits() {
@@ -2581,25 +2580,6 @@ function urlBase64ToUint8Array(base64String) {
     }
     return outputArray;
 }
-
-async function initPWAAndServiceWorker() {
-    // 1. Handle PWA install prompt for mobile & desktop
-    window.addEventListener('beforeinstallprompt', (e) => {
-        e.preventDefault();
-        deferredPWAInstallPrompt = e;
-        const installBtn = document.getElementById('pwa-install-btn');
-        if (installBtn) {
-            installBtn.classList.remove('hidden');
-            installBtn.classList.add('flex');
-            if (window.lucide) lucide.createIcons();
-        }
-    });
-
-    window.addEventListener('appinstalled', () => {
-        deferredPWAInstallPrompt = null;
-        const installBtn = document.getElementById('pwa-install-btn');
-        if (installBtn) installBtn.classList.add('hidden');
-    });
 
 async function initPWAAndServiceWorker() {
     // 1. Handle PWA install prompt for mobile & desktop
