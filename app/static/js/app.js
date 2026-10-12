@@ -700,11 +700,17 @@ async function showSupplierPayableDetails(payableId) {
                 <td class="p-3">${escapeProfitText(payment.reference || '-')}</td>
                 <td class="p-3">${escapeProfitText(payment.registered_by_name || '-')}</td>
                 <td class="p-3">${escapeProfitText(payment.notes || '-')}</td>
-                <td class="p-3 text-right space-x-1">
-                    ${canManage ? `
-                        <button onclick="openEditPaymentModal(${payment.id}, 'Proveedor', ${payable.id}, ${payment.id})" class="text-xs text-blue-600 hover:text-blue-800 font-semibold px-2 py-1 bg-blue-50 hover:bg-blue-100 rounded-lg transition">Editar</button>
-                        <button onclick="anularPagoProveedorDesdeDetalle(${payable.id}, ${payment.id})" class="text-xs text-rose-600 hover:text-rose-800 font-semibold px-2 py-1 bg-rose-50 hover:bg-rose-100 rounded-lg transition">Anular</button>
-                    ` : ''}
+                <td class="p-3 text-right">
+                    <div class="flex items-center justify-end gap-2">
+                        ${canManage ? `
+                            <button onclick="openEditPaymentModal(${payment.id}, 'Proveedor', ${payable.id}, ${payment.id})" class="text-slate-400 hover:text-blue-600 p-1 rounded-lg hover:bg-blue-50 transition" title="Editar pago">
+                                <i data-lucide="edit" class="w-4 h-4"></i>
+                            </button>
+                            <button onclick="anularPagoProveedorDesdeDetalle(${payable.id}, ${payment.id})" class="text-xs text-rose-600 hover:text-rose-800 font-medium hover:underline transition" title="Anular pago">
+                                Anular
+                            </button>
+                        ` : ''}
+                    </div>
                 </td>
             </tr>`).join('') : '<tr><td colspan="7" class="p-5 text-center text-slate-400">Todavía no hay pagos registrados para esta cuenta.</td></tr>';
         openModal('modal-supplier-payable-detail');
