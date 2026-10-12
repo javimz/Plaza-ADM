@@ -1767,15 +1767,15 @@ function applyBookingSupplierFilter(supplierName) {
     } else {
         if (clearBtn) clearBtn.classList.remove('hidden');
 
-        // 1. Neto Proveedor: sumatoria de la venta de ese proveedor
+        // 1. Neto Proveedor: sumatoria del costo de ese proveedor
         const matchingItems = (b.items || []).filter(item => (item.supplier_name || '').trim().toLowerCase() === currentBookingSupplierFilter.toLowerCase());
         const netoProveedor = matchingItems.reduce((acc, item) => {
-            const sale = Number(item.sale_price || 0);
+            const cost = Number(item.cost_price || 0);
             const qty = Number(item.quantity) || 1;
-            return acc + (sale * qty);
+            return acc + (cost * qty);
         }, 0);
 
-        // 2. Saldo Proveedor: sumatoria de la venta menos los pagos a ese proveedor
+        // 2. Saldo Proveedor: sumatoria del costo (neto) menos los pagos a ese proveedor
         const matchingSupplierPayments = (b.payments || []).filter(p => p.record_type === 'Proveedor' && (p.supplier_name || '').trim().toLowerCase() === currentBookingSupplierFilter.toLowerCase());
         const totalPagosProveedor = matchingSupplierPayments.reduce((acc, p) => acc + Math.abs(Number(p.amount || 0)), 0);
         const saldoProveedor = netoProveedor - totalPagosProveedor;
