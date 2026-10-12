@@ -1716,11 +1716,16 @@
             </div>
             <div class="overflow-auto border border-slate-200 rounded-xl">
                 <table class="w-full min-w-[650px] text-left text-sm text-slate-600">
-                    <thead class="bg-slate-50 text-slate-700 font-semibold sticky top-0"><tr><th class="p-3">Fecha</th><th class="p-3 text-right">Importe</th><th class="p-3">Método</th><th class="p-3">Referencia</th><th class="p-3">Registrado por</th><th class="p-3">Notas</th></tr></thead>
-                    <tbody id="supplier-payable-payments-body"><tr><td colspan="6" class="p-4 text-center text-slate-400">Sin pagos registrados</td></tr></tbody>
+                    <thead class="bg-slate-50 text-slate-700 font-semibold sticky top-0"><tr><th class="p-3">Fecha</th><th class="p-3 text-right">Importe</th><th class="p-3">Método</th><th class="p-3">Referencia</th><th class="p-3">Registrado por</th><th class="p-3">Notas</th><th class="p-3 text-right">Acciones</th></tr></thead>
+                    <tbody id="supplier-payable-payments-body"><tr><td colspan="7" class="p-4 text-center text-slate-400">Sin pagos registrados</td></tr></tbody>
                 </table>
             </div>
-            <div class="flex justify-end"><button onclick="closeModal('modal-supplier-payable-detail')" class="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl">Cerrar</button></div>
+            <div class="flex justify-between items-center pt-2">
+                <button type="button" id="btn-supplier-detail-add-payment" onclick="openSupplierPaymentFromDetail()" class="px-4 py-2 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-sm flex items-center gap-1.5 transition">
+                    <i data-lucide="plus" class="w-4 h-4"></i> Registrar pago
+                </button>
+                <button onclick="closeModal('modal-supplier-payable-detail')" class="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl">Cerrar</button>
+            </div>
         </div>
     </div>
 

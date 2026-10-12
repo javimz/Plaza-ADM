@@ -373,7 +373,7 @@ def update_supplier_payment(
 
         if payable["booking_id"] is not None:
             cursor.execute("""
-                SELECT COALESCE(b.total_cost, 0) as total_cost,
+                SELECT b.id as budget_id, COALESCE(b.total_cost, 0) as total_cost,
                        COALESCE((
                            SELECT SUM(spp.amount)
                            FROM supplier_payables sp
@@ -386,7 +386,7 @@ def update_supplier_payment(
                 WHERE bk.id = ?;
             """, (payment_id, payable["booking_id"]))
             bk_cost = cursor.fetchone()
-            if bk_cost and (float(bk_cost["total_cost"]) > 0 or bk_cost["total_cost"] is not None):
+            if bk_cost and (bk_cost["budget_id"] is not None or float(bk_cost["total_cost"]) > 0):
                 cost_balance = float(bk_cost["total_cost"]) - float(bk_cost["other_supplier_paid"])
                 if payload.amount > cost_balance + 0.01:
                     raise HTTPException(

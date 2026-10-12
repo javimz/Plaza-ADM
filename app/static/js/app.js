@@ -672,8 +672,11 @@ async function saveSupplierPayment(event) {
     } catch (e) { console.error(e); }
 }
 
+let currentActiveSupplierPayableDetailId = null;
+
 async function showSupplierPayableDetails(payableId) {
     try {
+        currentActiveSupplierPayableDetailId = payableId;
         const payable = await apiFetch(`/api/supplier-payables/${payableId}`);
         document.getElementById('supplier-payable-detail-title').innerText = `${payable.supplier_name} · ${payable.concept}`;
         const relation = [payable.booking_number, payable.budget_number].filter(Boolean).join(' · ');
@@ -681,21 +684,38 @@ async function showSupplierPayableDetails(payableId) {
         document.getElementById('supplier-detail-total').innerText = formatProfitAmount(payable.currency, payable.total_amount);
         document.getElementById('supplier-detail-paid').innerText = formatProfitAmount(payable.currency, payable.paid_amount);
         document.getElementById('supplier-detail-balance').innerText = formatProfitAmount(payable.currency, payable.balance_due);
+        
+        const addPayBtn = document.getElementById('btn-supplier-detail-add-payment');
+        if (addPayBtn) {
+            addPayBtn.style.display = (canManageSupplierPayables() && payable.balance_due > 0.009) ? 'flex' : 'none';
+        }
+
         const body = document.getElementById('supplier-payable-payments-body');
         const canManage = canManageSupplierPayables();
         body.innerHTML = payable.payments?.length ? payable.payments.map(payment => `
-            <tr class="border-b border-slate-100">
+            <tr class="border-b border-slate-100 hover:bg-slate-50 transition">
                 <td class="p-3">${escapeProfitText(payment.payment_date)}</td>
                 <td class="p-3 text-right font-semibold text-emerald-700">${formatProfitAmount(payable.currency, payment.amount)}</td>
                 <td class="p-3">${escapeProfitText(payment.payment_method)}</td>
                 <td class="p-3">${escapeProfitText(payment.reference || '-')}</td>
                 <td class="p-3">${escapeProfitText(payment.registered_by_name || '-')}</td>
                 <td class="p-3">${escapeProfitText(payment.notes || '-')}</td>
-                <td class="p-3 text-right">${canManage ? `<button onclick="anularPagoProveedorDesdeDetalle(${payable.id}, ${payment.id})" class="text-xs text-rose-600 hover:text-rose-800 font-medium">Anular</button>` : ''}</td>
+                <td class="p-3 text-right space-x-1">
+                    ${canManage ? `
+                        <button onclick="openEditPaymentModal(${payment.id}, 'Proveedor', ${payable.id}, ${payment.id})" class="text-xs text-blue-600 hover:text-blue-800 font-semibold px-2 py-1 bg-blue-50 hover:bg-blue-100 rounded-lg transition">Editar</button>
+                        <button onclick="anularPagoProveedorDesdeDetalle(${payable.id}, ${payment.id})" class="text-xs text-rose-600 hover:text-rose-800 font-semibold px-2 py-1 bg-rose-50 hover:bg-rose-100 rounded-lg transition">Anular</button>
+                    ` : ''}
+                </td>
             </tr>`).join('') : '<tr><td colspan="7" class="p-5 text-center text-slate-400">Todavía no hay pagos registrados para esta cuenta.</td></tr>';
         openModal('modal-supplier-payable-detail');
         if (window.lucide) lucide.createIcons();
     } catch (e) { console.error(e); }
+}
+
+function openSupplierPaymentFromDetail() {
+    if (currentActiveSupplierPayableDetailId) {
+        openSupplierPaymentModal(currentActiveSupplierPayableDetailId);
+    }
 }
 
 async function anularPagoProveedorDesdeDetalle(payableId, paymentId) {
@@ -703,7 +723,6 @@ async function anularPagoProveedorDesdeDetalle(payableId, paymentId) {
     try {
         await apiFetch(`/api/supplier-payables/${payableId}/payments/${paymentId}`, 'DELETE');
         alert('Pago anulado exitosamente.');
-        closeModal('modal-supplier-payable-detail');
         await refreshAfterFinancialChange();
     } catch (e) { console.error(e); }
 }
@@ -1817,6 +1836,10 @@ async function refreshAfterFinancialChange() {
     if (histModal && !histModal.classList.contains('hidden') && currentActiveBookingPaymentsId) {
         showBookingPaymentsHistory(currentActiveBookingPaymentsId).catch(console.error);
     }
+    const suppDetailModal = document.getElementById('modal-supplier-payable-detail');
+    if (suppDetailModal && !suppDetailModal.classList.contains('hidden') && currentActiveSupplierPayableDetailId) {
+        showSupplierPayableDetails(currentActiveSupplierPayableDetailId).catch(console.error);
+    }
 }
 
 async function openEditPaymentModal(paymentId, recordType = 'Cliente', payableId = null, supplierPaymentId = null) {
@@ -1826,8 +1849,25 @@ async function openEditPaymentModal(paymentId, recordType = 'Cliente', payableId
         let paymentData = null;
 
         if (isSupplier) {
-            const actualPayableId = payableId;
+            let actualPayableId = payableId;
             const actualPaymentId = supplierPaymentId || paymentId;
+
+            if (!actualPayableId) {
+                const foundPayable = supplierPayablesCache.find(sp => sp.payments && sp.payments.some(p => p.id === actualPaymentId));
+                if (foundPayable) actualPayableId = foundPayable.id;
+            }
+            if (!actualPayableId) {
+                try {
+                    const payables = await apiFetch('/api/supplier-payables');
+                    const foundPayable = payables.find(sp => sp.payments && sp.payments.some(p => p.id === actualPaymentId));
+                    if (foundPayable) actualPayableId = foundPayable.id;
+                } catch(e) {}
+            }
+            if (!actualPayableId) {
+                alert('No se pudo identificar la cuenta por pagar del proveedor.');
+                return;
+            }
+
             const payable = await apiFetch(`/api/supplier-payables/${actualPayableId}`);
             if (!payable || !payable.payments) {
                 alert('No se encontró el detalle del pago a proveedor.');
