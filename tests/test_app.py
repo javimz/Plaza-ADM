@@ -837,6 +837,102 @@ class TestTravelAgencyApp(unittest.TestCase):
         unsub_res = self.client.request("DELETE", "/api/notifications/subscribe", json={"endpoint": sub_payload["endpoint"]})
         self.assertEqual(unsub_res.status_code, 200)
 
+    def test_21_edit_client_and_supplier_payments(self):
+        # 1. Test Client Payment Edit
+        bookings = self.client.get("/api/bookings").json()
+        self.assertTrue(len(bookings) > 0)
+        booking = bookings[0]
+        b_id = booking["id"]
+        initial_paid = booking["paid_amount"]
+        initial_balance = booking["balance_due"]
+
+        # Register a payment of 100.0
+        pay_res = self.client.post("/api/payments", json={
+            "booking_id": b_id,
+            "amount": 100.0,
+            "payment_date": "2026-10-10",
+            "payment_method": "Transferencia Bancaria",
+            "concept": "Cobro inicial",
+            "reference_code": "REF-INIT-100",
+            "notes": "Prueba inicial"
+        })
+        self.assertEqual(pay_res.status_code, 200)
+        payment = pay_res.json()
+        payment_id = payment["id"]
+
+        # Edit payment: update amount to 150.0, method to Efectivo, new reference and notes
+        edit_res = self.client.put(f"/api/payments/{payment_id}", json={
+            "amount": 150.0,
+            "payment_date": "2026-10-12",
+            "payment_method": "Efectivo",
+            "concept": "Cobro ajustado",
+            "reference_code": "REF-EDIT-150",
+            "notes": "Ajuste de monto"
+        })
+        self.assertEqual(edit_res.status_code, 200)
+        edited_pay = edit_res.json()
+        self.assertEqual(edited_pay["amount"], 150.0)
+        self.assertEqual(edited_pay["payment_method"], "Efectivo")
+        self.assertEqual(edited_pay["reference_code"], "REF-EDIT-150")
+        self.assertEqual(edited_pay["notes"], "Ajuste de monto")
+
+        # Verify booking balances reflect +50.0 increase
+        updated_booking = self.client.get(f"/api/bookings/{b_id}").json()
+        self.assertEqual(updated_booking["paid_amount"], round(initial_paid + 150.0, 2))
+        self.assertEqual(updated_booking["balance_due"], round(initial_balance - 150.0, 2))
+
+        # Test validation: negative or 0 amount should fail
+        fail_zero = self.client.put(f"/api/payments/{payment_id}", json={
+            "amount": 0.0,
+            "payment_date": "2026-10-12",
+            "payment_method": "Efectivo"
+        })
+        self.assertEqual(fail_zero.status_code, 400)
+
+        # Test validation: amount exceeding booking total should fail
+        fail_exceed = self.client.put(f"/api/payments/{payment_id}", json={
+            "amount": 99999999.0,
+            "payment_date": "2026-10-12",
+            "payment_method": "Efectivo"
+        })
+        self.assertEqual(fail_exceed.status_code, 400)
+
+        # 2. Test Supplier Payment Edit
+        suppliers = self.client.get("/api/suppliers").json()
+        self.assertTrue(len(suppliers) > 0)
+        supp_id = suppliers[0]["id"]
+
+        expense_res = self.client.post("/api/supplier-payables/expenses", json={
+            "supplier_id": supp_id,
+            "concept": "Gasto transporte test",
+            "invoice_number": "FC-1234",
+            "currency": "USD",
+            "amount": 200.0,
+            "payment_date": "2026-10-10",
+            "payment_method": "Transferencia",
+            "reference": "REF-SUPP-1",
+            "notes": "Pago inicial a proveedor"
+        })
+        self.assertEqual(expense_res.status_code, 200)
+        expense_payable = expense_res.json()
+        payable_id = expense_payable["id"]
+        supp_payment_id = expense_payable["payments"][0]["id"]
+
+        # Edit supplier payment: update amount to 250.0
+        edit_supp_res = self.client.put(f"/api/supplier-payables/{payable_id}/payments/{supp_payment_id}", json={
+            "amount": 250.0,
+            "payment_date": "2026-10-12",
+            "payment_method": "Efectivo",
+            "reference": "REF-SUPP-EDIT",
+            "notes": "Ajuste de egreso"
+        })
+        self.assertEqual(edit_supp_res.status_code, 200)
+        updated_payable = edit_supp_res.json()
+        updated_sp = next(p for p in updated_payable["payments"] if p["id"] == supp_payment_id)
+        self.assertEqual(updated_sp["amount"], 250.0)
+        self.assertEqual(updated_sp["payment_method"], "Efectivo")
+        self.assertEqual(updated_sp["reference"], "REF-SUPP-EDIT")
+
 if __name__ == "__main__":
     unittest.main()
 

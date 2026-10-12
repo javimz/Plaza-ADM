@@ -346,6 +346,96 @@ def register_supplier_payment(
         conn.close()
 
 
+@router.put("/{payable_id}/payments/{payment_id}")
+def update_supplier_payment(
+    payable_id: int,
+    payment_id: int,
+    payload: SupplierPaymentCreate,
+    current_user: dict = Depends(get_current_user),
+):
+    _require_finance_role(current_user)
+    payment_date = _validate_iso_date(payload.payment_date, "pago")
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, total_amount, issue_date, due_date, booking_id, budget_id FROM supplier_payables WHERE id = ?;", (payable_id,))
+        payable = cursor.fetchone()
+        if not payable:
+            raise HTTPException(status_code=404, detail="Cuenta por pagar no encontrada")
+
+        cursor.execute("SELECT id FROM supplier_payments WHERE id = ? AND payable_id = ?;", (payment_id, payable_id))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Pago de proveedor no encontrado")
+
+        cursor.execute("SELECT COALESCE(SUM(amount), 0) FROM supplier_payments WHERE payable_id = ? AND id != ?;", (payable_id, payment_id))
+        other_paid = float(cursor.fetchone()[0] or 0)
+        new_paid = other_paid + payload.amount
+
+        if payable["booking_id"] is not None:
+            cursor.execute("""
+                SELECT COALESCE(b.total_cost, 0) as total_cost,
+                       COALESCE((
+                           SELECT SUM(spp.amount)
+                           FROM supplier_payables sp
+                           JOIN supplier_payments spp ON spp.payable_id = sp.id
+                           WHERE (sp.booking_id = bk.id OR (sp.booking_id IS NULL AND sp.budget_id = bk.budget_id))
+                             AND spp.id != ?
+                       ), 0) as other_supplier_paid
+                FROM bookings bk
+                LEFT JOIN budgets b ON b.id = bk.budget_id
+                WHERE bk.id = ?;
+            """, (payment_id, payable["booking_id"]))
+            bk_cost = cursor.fetchone()
+            if bk_cost and (float(bk_cost["total_cost"]) > 0 or bk_cost["total_cost"] is not None):
+                cost_balance = float(bk_cost["total_cost"]) - float(bk_cost["other_supplier_paid"])
+                if payload.amount > cost_balance + 0.01:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"El monto a pagar al proveedor ({payload.amount:.2f}) supera el saldo costo disponible de la reserva ({cost_balance:.2f})"
+                    )
+        elif payable["budget_id"] is not None:
+            cursor.execute("""
+                SELECT COALESCE(b.total_cost, 0) as total_cost,
+                       COALESCE((
+                           SELECT SUM(spp.amount)
+                           FROM supplier_payables sp
+                           JOIN supplier_payments spp ON spp.payable_id = sp.id
+                           WHERE sp.budget_id = b.id
+                             AND spp.id != ?
+                       ), 0) as other_supplier_paid
+                FROM budgets b
+                WHERE b.id = ?;
+            """, (payment_id, payable["budget_id"]))
+            b_cost = cursor.fetchone()
+            if b_cost and float(b_cost["total_cost"]) > 0:
+                cost_balance = float(b_cost["total_cost"]) - float(b_cost["other_supplier_paid"])
+                if payload.amount > cost_balance + 0.01:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"El monto a pagar al proveedor ({payload.amount:.2f}) supera el saldo costo disponible del presupuesto ({cost_balance:.2f})"
+                    )
+
+        if payable["issue_date"] == payable["due_date"]:
+            cursor.execute("UPDATE supplier_payables SET total_amount = ? WHERE id = ?;", (new_paid, payable_id))
+        else:
+            if new_paid > float(payable["total_amount"]) + 1e-9:
+                max_avail = max(0.0, float(payable["total_amount"]) - other_paid)
+                raise HTTPException(status_code=400, detail=f"El pago supera el saldo pendiente de la cuenta por pagar ({max_avail:.2f})")
+
+        cursor.execute("""
+            UPDATE supplier_payments
+            SET amount = ?, payment_date = ?, payment_method = ?, reference = ?, notes = ?
+            WHERE id = ? AND payable_id = ?;
+        """, (
+            payload.amount, payment_date.isoformat(), payload.payment_method,
+            payload.reference or "", payload.notes or "", payment_id, payable_id
+        ))
+        conn.commit()
+        return get_supplier_payable(payable_id, current_user)
+    finally:
+        conn.close()
+
+
 @router.delete("/{payable_id}/payments/{payment_id}")
 def delete_supplier_payment(
     payable_id: int,

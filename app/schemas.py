@@ -181,6 +181,14 @@ class PaymentCreate(BaseModel):
     reference_code: Optional[str] = ""
     notes: Optional[str] = ""
 
+class PaymentUpdate(BaseModel):
+    amount: float
+    payment_date: str
+    payment_method: str
+    concept: Optional[str] = ""
+    reference_code: Optional[str] = ""
+    notes: Optional[str] = ""
+
 class PaymentOut(BaseModel):
     id: int
     payment_number: str

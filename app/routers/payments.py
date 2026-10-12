@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from typing import List
 from datetime import datetime
 from app.database import get_db_connection
-from app.schemas import PaymentCreate, PaymentOut
+from app.schemas import PaymentCreate, PaymentUpdate, PaymentOut
 from app.routers.users import get_current_user
 from app.sales_assignments import require_sales_assignment
 
@@ -138,10 +138,81 @@ def register_payment(payload: PaymentCreate, current_user: dict = Depends(get_cu
 
     return dict(payment)
 
+@router.put("/{payment_id}", response_model=PaymentOut)
+def update_payment(payment_id: int, payload: PaymentUpdate, current_user: dict = Depends(get_current_user)):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT * FROM payments WHERE id = ?;", (payment_id,))
+    payment = cursor.fetchone()
+    if not payment:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Pago no encontrado")
+
+    booking_id = payment["booking_id"]
+    require_sales_assignment(cursor, "booking", booking_id, current_user)
+
+    if payload.amount <= 0:
+        conn.close()
+        raise HTTPException(status_code=400, detail="El monto del pago debe ser mayor a 0")
+
+    cursor.execute("SELECT * FROM bookings WHERE id = ?;", (booking_id,))
+    booking = cursor.fetchone()
+    if not booking:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Reserva asociada no encontrada")
+
+    cursor.execute("SELECT COALESCE(SUM(amount), 0) FROM payments WHERE booking_id = ? AND id != ?;", (booking_id, payment_id))
+    other_payments_sum = float(cursor.fetchone()[0] or 0.0)
+    new_paid = round(other_payments_sum + payload.amount, 2)
+
+    if new_paid > float(booking["total_amount"]) + 0.01:
+        max_possible = max(0.0, float(booking["total_amount"]) - other_payments_sum)
+        conn.close()
+        raise HTTPException(status_code=400, detail=f"El monto ({payload.amount:.2f}) supera el saldo disponible de la reserva ({max_possible:.2f})")
+
+    new_balance = max(0.0, round(float(booking["total_amount"]) - new_paid, 2))
+
+    cursor.execute("""
+        UPDATE payments
+        SET amount = ?, payment_date = ?, payment_method = ?, concept = ?, reference_code = ?, notes = ?
+        WHERE id = ?;
+    """, (
+        payload.amount, payload.payment_date, payload.payment_method,
+        payload.concept or "", payload.reference_code or "", payload.notes or "",
+        payment_id
+    ))
+
+    cursor.execute("UPDATE payments SET payment_type = 'Parcial' WHERE booking_id = ?;", (booking_id,))
+    if new_balance <= 0.01:
+        cursor.execute("""
+            UPDATE payments SET payment_type = 'Total'
+            WHERE id = (SELECT id FROM payments WHERE booking_id = ? ORDER BY id DESC LIMIT 1);
+        """, (booking_id,))
+
+    cursor.execute("""
+        UPDATE bookings SET paid_amount = ?, balance_due = ? WHERE id = ?;
+    """, (new_paid, new_balance, booking_id))
+
+    conn.commit()
+
+    cursor.execute("""
+        SELECT p.*, bk.booking_number, c.name as client_name, u.full_name as registered_by_user_name
+        FROM payments p
+        LEFT JOIN bookings bk ON p.booking_id = bk.id
+        LEFT JOIN clients c ON p.client_id = c.id
+        LEFT JOIN users u ON p.registered_by_user_id = u.id
+        WHERE p.id = ?;
+    """, (payment_id,))
+    updated_payment = cursor.fetchone()
+    conn.close()
+
+    return dict(updated_payment)
+
 @router.delete("/{payment_id}")
 def delete_payment(payment_id: int, current_user: dict = Depends(get_current_user)):
-    if current_user.get("role") not in ["admin", "ventas"]:
-        raise HTTPException(status_code=403, detail="Se requieren permisos de administrador o ventas para anular pagos")
+    if current_user.get("role") not in ["admin", "ventas", "administrativa"]:
+        raise HTTPException(status_code=403, detail="Se requieren permisos para anular pagos")
 
     conn = get_db_connection()
     cursor = conn.cursor()

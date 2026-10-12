@@ -1672,8 +1672,12 @@ async function loadBookings() {
     } catch (e) { console.error(e); }
 }
 
+let currentActiveBookingPaymentsId = null;
+let currentEditingPayment = null;
+
 async function showBookingPaymentsHistory(bookingId) {
     try {
+        currentActiveBookingPaymentsId = bookingId;
         const b = await apiFetch(`/api/bookings/${bookingId}`);
         document.getElementById('hist-modal-title').innerText = `Detalle de reserva - ${b.booking_number}`;
         const datesText = (b.start_date || b.end_date)
@@ -1731,7 +1735,13 @@ async function showBookingPaymentsHistory(bookingId) {
                         <td class="p-3 text-slate-500">${isSupplierExpense ? `Proveedor: ${escapeProfitText(p.supplier_name)}` : (p.reference_code || '-')} ${p.notes ? '<span class="block italic text-[11px] text-slate-400">'+p.notes+'</span>' : ''}</td>
                         <td class="p-3 text-slate-600 font-medium">${p.registered_by_user_name || 'Agente'}</td>
                         <td class="p-3 text-right space-x-1">
-                            ${isSupplierExpense ? '<span class="text-rose-700">Egreso</span>' : `<button onclick="showReceiptModal(${p.id})" class="bg-blue-100 hover:bg-blue-200 text-blue-800 font-semibold px-2 py-1 rounded-lg transition" title="Ver Recibo Oficial">Recibo</button>`}
+                            ${isSupplierExpense ? `
+                                <span class="text-rose-700 font-medium">Egreso</span>
+                                <button onclick="openEditPaymentModal(${p.supplier_payment_id || p.id}, 'Proveedor', ${p.payable_id}, ${p.supplier_payment_id || p.id})" class="text-slate-400 hover:text-blue-600 p-1" title="Editar Egreso"><i data-lucide="edit" class="w-3.5 h-3.5"></i></button>
+                            ` : `
+                                <button onclick="showReceiptModal(${p.id})" class="bg-blue-100 hover:bg-blue-200 text-blue-800 font-semibold px-2 py-1 rounded-lg transition" title="Ver Recibo Oficial">Recibo</button>
+                                <button onclick="openEditPaymentModal(${p.id}, 'Cliente', null, null)" class="text-slate-400 hover:text-blue-600 p-1" title="Editar Pago"><i data-lucide="edit" class="w-3.5 h-3.5"></i></button>
+                            `}
                         </td>
                     </tr>
                 `;
@@ -1739,6 +1749,7 @@ async function showBookingPaymentsHistory(bookingId) {
         }
 
         openModal('modal-booking-payments');
+        if (window.lucide) lucide.createIcons();
     } catch (e) { console.error(e); }
 }
 
@@ -1770,7 +1781,14 @@ async function loadPaymentsHistory() {
                     <td class="p-4 text-xs text-slate-600">${p.reference_code || '-'} ${p.notes ? '<span class="block italic text-[11px] text-slate-400">'+p.notes+'</span>' : ''}</td>
                     <td class="p-4 text-xs font-medium text-slate-700">${p.registered_by_user_name || 'Agente'}</td>
                     <td class="p-4 text-right space-x-1">
-                        ${isSupplierExpense ? `<button onclick="anularPagoProveedor(${p.payable_id}, ${p.supplier_payment_id})" class="text-slate-400 hover:text-rose-600 p-1" title="Anular egreso"><i data-lucide="trash-2" class="w-4 h-4"></i></button>` : `<button onclick="showReceiptModal(${p.id})" class="text-xs bg-blue-100 hover:bg-blue-200 text-blue-800 font-semibold px-2.5 py-1 rounded-lg transition" title="Ver Recibo Oficial">Recibo</button><button onclick="anularPago(${p.id})" class="text-slate-400 hover:text-rose-600 p-1" title="Anular Pago"><i data-lucide="trash-2" class="w-4 h-4"></i></button>`}
+                        ${isSupplierExpense ? `
+                            <button onclick="openEditPaymentModal(${p.supplier_payment_id}, 'Proveedor', ${p.payable_id}, ${p.supplier_payment_id})" class="text-slate-400 hover:text-blue-600 p-1" title="Editar egreso"><i data-lucide="edit" class="w-4 h-4"></i></button>
+                            <button onclick="anularPagoProveedor(${p.payable_id}, ${p.supplier_payment_id})" class="text-slate-400 hover:text-rose-600 p-1" title="Anular egreso"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                        ` : `
+                            <button onclick="showReceiptModal(${p.id})" class="text-xs bg-blue-100 hover:bg-blue-200 text-blue-800 font-semibold px-2.5 py-1 rounded-lg transition" title="Ver Recibo Oficial">Recibo</button>
+                            <button onclick="openEditPaymentModal(${p.id}, 'Cliente', null, null)" class="text-slate-400 hover:text-blue-600 p-1" title="Editar Pago"><i data-lucide="edit" class="w-4 h-4"></i></button>
+                            <button onclick="anularPago(${p.id})" class="text-slate-400 hover:text-rose-600 p-1" title="Anular Pago"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                        `}
                     </td>
                 </tr>
             `;
@@ -1794,6 +1812,206 @@ async function refreshAfterFinancialChange() {
     await Promise.all(promises);
     if (!document.getElementById('sales-payments-panel').classList.contains('hidden')) {
         loadSalesPaymentsDetails();
+    }
+    const histModal = document.getElementById('modal-booking-payments');
+    if (histModal && !histModal.classList.contains('hidden') && currentActiveBookingPaymentsId) {
+        showBookingPaymentsHistory(currentActiveBookingPaymentsId).catch(console.error);
+    }
+}
+
+async function openEditPaymentModal(paymentId, recordType = 'Cliente', payableId = null, supplierPaymentId = null) {
+    try {
+        currentEditingPayment = null;
+        const isSupplier = recordType === 'Proveedor';
+        let paymentData = null;
+
+        if (isSupplier) {
+            const actualPayableId = payableId;
+            const actualPaymentId = supplierPaymentId || paymentId;
+            const payable = await apiFetch(`/api/supplier-payables/${actualPayableId}`);
+            if (!payable || !payable.payments) {
+                alert('No se encontró el detalle del pago a proveedor.');
+                return;
+            }
+            const found = payable.payments.find(p => p.id === actualPaymentId);
+            if (!found) {
+                alert('No se encontró el pago a proveedor.');
+                return;
+            }
+            paymentData = { ...found };
+            paymentData.record_type = 'Proveedor';
+            paymentData.payable_id = actualPayableId;
+            paymentData.supplier_payment_id = actualPaymentId;
+            paymentData.payment_number = `PROV-${String(actualPaymentId).padStart(6, '0')}`;
+            paymentData.target_label = `${payable.supplier_name || 'Proveedor'} · ${payable.concept || ''}`;
+            paymentData.currency = payable.currency || 'USD';
+            paymentData.total_amount = payable.total_amount;
+
+            const otherSum = payable.payments.filter(p => p.id !== actualPaymentId).reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
+            paymentData.other_paid = otherSum;
+            paymentData.max_allowed = (payable.issue_date === payable.due_date) ? null : Math.max(0, Number(payable.total_amount) - otherSum);
+        } else {
+            paymentData = await apiFetch(`/api/payments/${paymentId}`);
+            paymentData.record_type = 'Cliente';
+            paymentData.target_label = `${paymentData.booking_number || 'Reserva'} · ${paymentData.client_name || 'Cliente'}`;
+
+            let booking = null;
+            if (paymentData.booking_id) {
+                booking = bookingsCache.find(b => b.id === paymentData.booking_id);
+                if (!booking) {
+                    try {
+                        booking = await apiFetch(`/api/bookings/${paymentData.booking_id}`);
+                    } catch (e) {}
+                }
+            }
+
+            if (booking) {
+                const otherSum = Math.max(0, Number(booking.paid_amount || 0) - Number(paymentData.amount || 0));
+                paymentData.other_paid = otherSum;
+                paymentData.max_allowed = Math.max(0, Number(booking.total_amount || 0) - otherSum);
+                paymentData.currency = booking.currency || '$';
+            } else if (paymentData.booking_total !== undefined) {
+                const otherSum = Math.max(0, Number(paymentData.booking_paid || 0) - Number(paymentData.amount || 0));
+                paymentData.other_paid = otherSum;
+                paymentData.max_allowed = Math.max(0, Number(paymentData.booking_total || 0) - otherSum);
+                paymentData.currency = paymentData.currency || '$';
+            } else {
+                paymentData.max_allowed = null;
+                paymentData.currency = '$';
+            }
+        }
+
+        currentEditingPayment = paymentData;
+
+        document.getElementById('edit-payment-id').value = isSupplier ? (paymentData.supplier_payment_id || paymentId) : paymentData.id;
+        document.getElementById('edit-payment-record-type').value = recordType;
+        document.getElementById('edit-payment-payable-id').value = payableId || '';
+        document.getElementById('edit-payment-supplier-payment-id').value = supplierPaymentId || '';
+        document.getElementById('edit-payment-booking-id').value = paymentData.booking_id || '';
+
+        document.getElementById('edit-pay-number').innerText = paymentData.payment_number || `PAGO #${paymentData.id}`;
+        const badge = document.getElementById('edit-pay-badge');
+        badge.innerText = isSupplier ? 'Egreso Proveedor' : (paymentData.payment_type || 'Cobro');
+        badge.className = isSupplier ? 'px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-100 text-rose-800' : 'px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800';
+
+        document.getElementById('edit-pay-target').innerText = paymentData.target_label || '-';
+
+        const limitVal = document.getElementById('edit-pay-limit-val');
+        const limitLabel = document.getElementById('edit-pay-limit-label');
+        if (paymentData.max_allowed !== null && paymentData.max_allowed !== undefined) {
+            limitLabel.innerText = isSupplier ? 'Saldo máx. en cuenta:' : 'Monto máx. permitido:';
+            limitVal.innerText = `${paymentData.currency} $ ${paymentData.max_allowed.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+        } else {
+            limitLabel.innerText = 'Saldo cuenta:';
+            limitVal.innerText = 'Sin límite estricto';
+        }
+
+        const amt = Math.abs(Number(paymentData.amount || 0));
+        document.getElementById('edit-payment-amount').value = amt ? amt.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '0,00';
+        document.getElementById('edit-payment-date').value = paymentData.payment_date || '';
+
+        const methodSelect = document.getElementById('edit-payment-method');
+        if (paymentData.payment_method) {
+            const hasOption = Array.from(methodSelect.options).some(opt => opt.value === paymentData.payment_method);
+            if (!hasOption) {
+                const opt = document.createElement('option');
+                opt.value = paymentData.payment_method;
+                opt.innerText = paymentData.payment_method;
+                methodSelect.appendChild(opt);
+            }
+            methodSelect.value = paymentData.payment_method;
+        }
+
+        const conceptField = document.getElementById('edit-payment-concept-field');
+        if (isSupplier) {
+            conceptField.classList.add('hidden');
+        } else {
+            conceptField.classList.remove('hidden');
+            document.getElementById('edit-payment-concept').value = paymentData.concept || '';
+        }
+
+        document.getElementById('edit-payment-reference').value = paymentData.reference_code || paymentData.reference || '';
+        document.getElementById('edit-payment-notes').value = paymentData.notes || '';
+
+        openModal('modal-edit-payment');
+        if (window.lucide) lucide.createIcons();
+    } catch (e) {
+        console.error('Error al abrir modal de edición de pago:', e);
+        alert('No se pudo cargar la información del pago.');
+    }
+}
+
+async function savePaymentEdit(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btn-save-edit-payment');
+    const origHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = 'Guardando...';
+
+    try {
+        const recordType = document.getElementById('edit-payment-record-type').value;
+        const isSupplier = recordType === 'Proveedor';
+        const amount = parseCurrencyInput(document.getElementById('edit-payment-amount').value);
+        const paymentDate = document.getElementById('edit-payment-date').value;
+        const paymentMethod = document.getElementById('edit-payment-method').value;
+        const reference = document.getElementById('edit-payment-reference').value.trim();
+        const notes = document.getElementById('edit-payment-notes').value.trim();
+
+        if (isNaN(amount) || amount <= 0) {
+            alert('El monto del pago debe ser mayor a 0.');
+            btn.disabled = false;
+            btn.innerHTML = origHtml;
+            return;
+        }
+
+        if (!paymentDate) {
+            alert('Por favor ingrese una fecha válida.');
+            btn.disabled = false;
+            btn.innerHTML = origHtml;
+            return;
+        }
+
+        if (currentEditingPayment && currentEditingPayment.max_allowed !== null && currentEditingPayment.max_allowed !== undefined) {
+            if (amount > currentEditingPayment.max_allowed + 0.01) {
+                alert(`El monto ingresado ($ ${amount.toLocaleString('es-AR', {minimumFractionDigits: 2})}) supera el monto máximo disponible ($ ${currentEditingPayment.max_allowed.toLocaleString('es-AR', {minimumFractionDigits: 2})}).`);
+                btn.disabled = false;
+                btn.innerHTML = origHtml;
+                return;
+            }
+        }
+
+        if (isSupplier) {
+            const payableId = parseInt(document.getElementById('edit-payment-payable-id').value);
+            const paymentId = parseInt(document.getElementById('edit-payment-id').value);
+            await apiFetch(`/api/supplier-payables/${payableId}/payments/${paymentId}`, 'PUT', {
+                amount,
+                payment_date: paymentDate,
+                payment_method: paymentMethod,
+                reference,
+                notes
+            });
+        } else {
+            const paymentId = parseInt(document.getElementById('edit-payment-id').value);
+            const concept = document.getElementById('edit-payment-concept').value.trim();
+            await apiFetch(`/api/payments/${paymentId}`, 'PUT', {
+                amount,
+                payment_date: paymentDate,
+                payment_method: paymentMethod,
+                concept,
+                reference_code: reference,
+                notes
+            });
+        }
+
+        closeModal('modal-edit-payment');
+        alert('Pago actualizado exitosamente.');
+        await refreshAfterFinancialChange();
+    } catch (err) {
+        console.error('Error guardando pago editado:', err);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+        if (window.lucide) lucide.createIcons();
     }
 }
 
@@ -2575,7 +2793,7 @@ async function loadSalesPaymentsDetails() {
                         <td class="p-4">${escapeProfitText(p.payment_method)}<span class="block text-xs text-slate-500">${escapeProfitText(p.payment_type)}</span></td>
                         <td class="p-4 text-xs">${escapeProfitText(p.reference_code || '-')}<span class="block italic text-slate-400">${escapeProfitText(p.notes || '')}</span></td>
                         <td class="p-4">${escapeProfitText(p.registered_by_user_name || 'Agente')}</td>
-                        <td class="p-4 text-right">${isSupplierExpense ? `<button onclick="anularPagoProveedor(${p.payable_id}, ${p.supplier_payment_id})" class="text-xs text-rose-700 hover:text-rose-900">Anular egreso</button>` : `<button onclick="showReceiptModal(${p.id})" class="text-xs bg-blue-100 hover:bg-blue-200 text-blue-800 font-semibold px-2.5 py-1 rounded-lg transition">Ver recibo</button>`}</td>
+                        <td class="p-4 text-right space-x-1">${isSupplierExpense ? `<button onclick="openEditPaymentModal(${p.supplier_payment_id}, 'Proveedor', ${p.payable_id}, ${p.supplier_payment_id})" class="text-xs text-blue-600 hover:text-blue-800 font-medium">Editar</button><button onclick="anularPagoProveedor(${p.payable_id}, ${p.supplier_payment_id})" class="text-xs text-rose-700 hover:text-rose-900">Anular egreso</button>` : `<button onclick="showReceiptModal(${p.id})" class="text-xs bg-blue-100 hover:bg-blue-200 text-blue-800 font-semibold px-2.5 py-1 rounded-lg transition">Ver recibo</button><button onclick="openEditPaymentModal(${p.id}, 'Cliente', null, null)" class="text-xs text-blue-600 hover:text-blue-800 font-medium">Editar</button>`}</td>
                     </tr>`;
             }).join('');
         }
