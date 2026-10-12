@@ -1585,11 +1585,11 @@
                     <p class="text-lg font-bold text-amber-600" id="hist-modal-balance">$0.00</p>
                 </div>
                 <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
-                    <span class="text-xs text-slate-500 font-semibold uppercase">Costo</span>
+                    <span class="text-xs text-slate-500 font-semibold uppercase">Neto</span>
                     <p class="text-lg font-bold text-slate-700" id="hist-modal-cost">$0.00</p>
                 </div>
                 <div class="bg-rose-50 p-3 rounded-xl border border-rose-200">
-                    <span class="text-xs text-rose-700 font-semibold uppercase">Saldo costo</span>
+                    <span class="text-xs text-rose-700 font-semibold uppercase">Saldo Neto</span>
                     <p class="text-lg font-bold text-rose-700" id="hist-modal-cost-balance">$0.00</p>
                 </div>
             </div>
@@ -1608,6 +1608,42 @@
                     </table>
                 </div>
             </section>
+
+            <!-- FILTRO Y KPIS POR PROVEEDOR -->
+            <div class="bg-slate-50/80 border border-slate-200 rounded-2xl p-4 space-y-3">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                        <h5 class="text-xs font-bold text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                            <i data-lucide="filter" class="w-3.5 h-3.5 text-blue-600"></i> Filtrar por Proveedor
+                        </h5>
+                        <p class="text-[11px] text-slate-500">Seleccione un proveedor para calcular su Neto y Saldo en esta reserva</p>
+                    </div>
+                    <div class="flex items-center gap-2 w-full sm:w-auto">
+                        <select id="hist-modal-supplier-select" onchange="applyBookingSupplierFilter(this.value)" class="w-full sm:w-64 p-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500 text-slate-700">
+                            <option value="">Todos los proveedores</option>
+                        </select>
+                        <button type="button" onclick="clearBookingSupplierFilter()" id="btn-clear-supplier-filter" class="hidden px-2.5 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-white border border-slate-200 rounded-xl transition">Limpiar</button>
+                    </div>
+                </div>
+
+                <!-- KPIs dinámicos del proveedor -->
+                <div id="hist-modal-supplier-kpis-panel" class="hidden grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-200">
+                    <div class="bg-white p-3.5 rounded-xl border border-blue-200 shadow-sm flex items-center justify-between">
+                        <div>
+                            <span class="text-[11px] font-bold text-blue-700 uppercase tracking-wide">Neto Proveedor</span>
+                            <p class="text-[11px] text-slate-500">Sumatoria de la venta</p>
+                        </div>
+                        <p class="text-lg font-bold text-blue-900" id="hist-modal-supplier-neto">$0.00</p>
+                    </div>
+                    <div class="bg-white p-3.5 rounded-xl border border-amber-200 shadow-sm flex items-center justify-between">
+                        <div>
+                            <span class="text-[11px] font-bold text-amber-700 uppercase tracking-wide">Saldo Proveedor</span>
+                            <p class="text-[11px] text-slate-500">Venta menos pagos proveedor</p>
+                        </div>
+                        <p class="text-lg font-bold text-amber-900" id="hist-modal-supplier-saldo">$0.00</p>
+                    </div>
+                </div>
+            </div>
 
             <!-- Detailed Payments Table -->
             <div class="table-container border rounded-xl overflow-hidden">
@@ -1909,6 +1945,6 @@
     </div>
 
     <!-- Application Script -->
-    <script src="static/js/app.js?v=20261012_02"></script>
+    <script src="static/js/app.js?v=20261012_03"></script>
 </body>
 </html>

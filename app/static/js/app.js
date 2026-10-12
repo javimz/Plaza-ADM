@@ -1701,11 +1701,15 @@ async function loadBookings() {
 
 let currentActiveBookingPaymentsId = null;
 let currentEditingPayment = null;
+let currentBookingDetailData = null;
+let currentBookingSupplierFilter = '';
 
 async function showBookingPaymentsHistory(bookingId) {
     try {
         currentActiveBookingPaymentsId = bookingId;
         const b = await apiFetch(`/api/bookings/${bookingId}`);
+        currentBookingDetailData = b;
+
         document.getElementById('hist-modal-title').innerText = `Detalle de reserva - ${b.booking_number}`;
         const datesText = (b.start_date || b.end_date)
             ? ` | Salida: ${b.start_date || '-'} | Regreso: ${b.end_date || '-'}`
@@ -1717,38 +1721,121 @@ async function showBookingPaymentsHistory(bookingId) {
         document.getElementById('hist-modal-cost').innerText = `${b.currency} $ ${Number(b.total_cost || 0).toLocaleString('es-AR', {minimumFractionDigits: 2})}`;
         document.getElementById('hist-modal-cost-balance').innerText = `${b.currency} $ ${Number(b.cost_balance || 0).toLocaleString('es-AR', {minimumFractionDigits: 2})}`;
 
-        const items = b.items || [];
-        document.getElementById('hist-modal-items-count').innerText = `${items.length} ${items.length === 1 ? 'ítem' : 'ítems'}`;
-        const itemsBody = document.getElementById('hist-modal-items-body');
-        itemsBody.innerHTML = items.length ? items.map(item => {
+        const addBtn = document.getElementById('hist-modal-add-payment-btn');
+        if (addBtn) {
+            if (b.balance_due > 0) {
+                addBtn.style.display = 'inline-block';
+                addBtn.onclick = () => { closeModal('modal-booking-payments'); openPaymentModal(b.id); };
+            } else {
+                addBtn.style.display = 'none';
+            }
+        }
+
+        // Setup supplier dropdown
+        const supplierSet = new Set();
+        (b.items || []).forEach(it => { if (it.supplier_name && it.supplier_name.trim()) supplierSet.add(it.supplier_name.trim()); });
+        (b.payments || []).forEach(p => { if (p.supplier_name && p.supplier_name.trim()) supplierSet.add(p.supplier_name.trim()); });
+        const suppliers = Array.from(supplierSet).sort((x, y) => x.localeCompare(y, 'es'));
+
+        const selectEl = document.getElementById('hist-modal-supplier-select');
+        if (selectEl) {
+            selectEl.innerHTML = '<option value="">Todos los proveedores</option>' + suppliers.map(s => `<option value="${escapeProfitText(s)}">${escapeProfitText(s)}</option>`).join('');
+            selectEl.value = currentBookingSupplierFilter || '';
+        }
+
+        applyBookingSupplierFilter(currentBookingSupplierFilter || '');
+
+        openModal('modal-booking-payments');
+        if (window.lucide) lucide.createIcons();
+    } catch (e) { console.error(e); }
+}
+
+function applyBookingSupplierFilter(supplierName) {
+    currentBookingSupplierFilter = (supplierName || '').trim();
+    const b = currentBookingDetailData;
+    if (!b) return;
+
+    const selectEl = document.getElementById('hist-modal-supplier-select');
+    if (selectEl && selectEl.value !== currentBookingSupplierFilter) selectEl.value = currentBookingSupplierFilter;
+
+    const kpisPanel = document.getElementById('hist-modal-supplier-kpis-panel');
+    const clearBtn = document.getElementById('btn-clear-supplier-filter');
+
+    if (!currentBookingSupplierFilter) {
+        if (kpisPanel) kpisPanel.classList.add('hidden');
+        if (clearBtn) clearBtn.classList.add('hidden');
+    } else {
+        if (clearBtn) clearBtn.classList.remove('hidden');
+
+        // 1. Neto Proveedor: sumatoria de la venta de ese proveedor
+        const matchingItems = (b.items || []).filter(item => (item.supplier_name || '').trim().toLowerCase() === currentBookingSupplierFilter.toLowerCase());
+        const netoProveedor = matchingItems.reduce((acc, item) => {
+            const sale = Number(item.sale_price || 0);
+            const qty = Number(item.quantity) || 1;
+            return acc + (sale * qty);
+        }, 0);
+
+        // 2. Saldo Proveedor: sumatoria de la venta menos los pagos a ese proveedor
+        const matchingSupplierPayments = (b.payments || []).filter(p => p.record_type === 'Proveedor' && (p.supplier_name || '').trim().toLowerCase() === currentBookingSupplierFilter.toLowerCase());
+        const totalPagosProveedor = matchingSupplierPayments.reduce((acc, p) => acc + Math.abs(Number(p.amount || 0)), 0);
+        const saldoProveedor = netoProveedor - totalPagosProveedor;
+
+        if (kpisPanel) {
+            kpisPanel.classList.remove('hidden');
+            const netoEl = document.getElementById('hist-modal-supplier-neto');
+            const saldoEl = document.getElementById('hist-modal-supplier-saldo');
+            if (netoEl) netoEl.innerText = `${b.currency} $ ${netoProveedor.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+            if (saldoEl) saldoEl.innerText = `${b.currency} $ ${saldoProveedor.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+        }
+    }
+
+    renderBookingItemsAndPayments(b, currentBookingSupplierFilter);
+}
+
+function clearBookingSupplierFilter() {
+    applyBookingSupplierFilter('');
+}
+
+function renderBookingItemsAndPayments(b, filterSupplier) {
+    const filterLower = (filterSupplier || '').trim().toLowerCase();
+
+    // 1. Render Items
+    const items = b.items || [];
+    const itemsToShow = filterLower ? items.filter(it => (it.supplier_name || '').trim().toLowerCase() === filterLower) : items;
+    const itemsCount = document.getElementById('hist-modal-items-count');
+    if (itemsCount) {
+        itemsCount.innerText = filterLower ? `${itemsToShow.length} de ${items.length} ítems` : `${items.length} ${items.length === 1 ? 'ítem' : 'ítems'}`;
+    }
+
+    const itemsBody = document.getElementById('hist-modal-items-body');
+    if (itemsBody) {
+        itemsBody.innerHTML = itemsToShow.length ? itemsToShow.map(item => {
             const cost = Number(item.cost_price || 0);
             const sale = Number(item.sale_price || 0);
             const saldo = sale - cost;
             return `
-            <tr class="border-b border-slate-100">
+            <tr class="border-b border-slate-100 hover:bg-slate-50 transition">
                 <td class="p-3">${escapeProfitText(item.service_type)}</td>
                 <td class="p-3 font-medium text-slate-800">${escapeProfitText(item.description)}</td>
-                <td class="p-3">${escapeProfitText(item.supplier_name || '-')}</td>
+                <td class="p-3 font-semibold text-blue-700">${escapeProfitText(item.supplier_name || '-')}</td>
                 <td class="p-3 text-right">${Number(item.quantity || 0)}</td>
                 <td class="p-3 text-right">${formatProfitAmount(b.currency, cost)}</td>
                 <td class="p-3 text-right">${formatProfitAmount(b.currency, sale)}</td>
                 <td class="p-3 text-right font-semibold ${saldo < 0 ? 'text-rose-700' : 'text-slate-800'}">${formatProfitAmount(b.currency, saldo)}</td>
             </tr>`;
-        }).join('') : '<tr><td colspan="7" class="p-4 text-center text-slate-400">No hay ítems de presupuesto asociados a esta reserva.</td></tr>';
+        }).join('') : `<tr><td colspan="7" class="p-4 text-center text-slate-400">${filterLower ? 'No hay ítems para este proveedor en esta reserva.' : 'No hay ítems de presupuesto asociados a esta reserva.'}</td></tr>`;
+    }
 
-        const addBtn = document.getElementById('hist-modal-add-payment-btn');
-        if (b.balance_due > 0) {
-            addBtn.style.display = 'inline-block';
-            addBtn.onclick = () => { closeModal('modal-booking-payments'); openPaymentModal(b.id); };
-        } else {
-            addBtn.style.display = 'none';
-        }
+    // 2. Render Payments
+    const tbody = document.getElementById('hist-modal-payments-body');
+    if (tbody) {
+        const payments = b.payments || [];
+        const paymentsToShow = filterLower ? payments.filter(p => p.record_type === 'Proveedor' ? (p.supplier_name || '').trim().toLowerCase() === filterLower : true) : payments;
 
-        const tbody = document.getElementById('hist-modal-payments-body');
-        if (!b.payments || b.payments.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="9" class="p-4 text-center text-slate-400">No se han registrado pagos para esta reserva</td></tr>`;
+        if (!paymentsToShow.length) {
+            tbody.innerHTML = `<tr><td colspan="9" class="p-4 text-center text-slate-400">${filterLower ? 'No hay pagos vinculados a este proveedor en esta reserva' : 'No se han registrado pagos para esta reserva'}</td></tr>`;
         } else {
-            tbody.innerHTML = b.payments.map(p => {
+            tbody.innerHTML = paymentsToShow.map(p => {
                 const timePart = p.created_at ? (p.created_at.includes(' ') ? p.created_at.split(' ')[1] : p.created_at) : '-';
                 const isSupplierExpense = p.record_type === 'Proveedor';
                 return `
@@ -1764,21 +1851,27 @@ async function showBookingPaymentsHistory(bookingId) {
                         <td class="p-3 text-right space-x-1">
                             ${isSupplierExpense ? `
                                 <span class="text-rose-700 font-medium">Egreso</span>
-                                <button onclick="openEditPaymentModal(${p.supplier_payment_id || p.id}, 'Proveedor', ${p.payable_id}, ${p.supplier_payment_id || p.id})" class="text-slate-400 hover:text-blue-600 p-1" title="Editar Egreso"><i data-lucide="edit" class="w-3.5 h-3.5"></i></button>
+                                <button type="button" onclick="openEditPaymentModal(${p.supplier_payment_id || p.id}, 'Proveedor', ${p.payable_id}, ${p.supplier_payment_id || p.id})" class="text-blue-600 hover:text-blue-800 p-1 rounded hover:bg-blue-50 transition inline-flex items-center" title="Editar Egreso">
+                                    <svg class="w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" />
+                                    </svg>
+                                </button>
                             ` : `
                                 <button onclick="showReceiptModal(${p.id})" class="bg-blue-100 hover:bg-blue-200 text-blue-800 font-semibold px-2 py-1 rounded-lg transition" title="Ver Recibo Oficial">Recibo</button>
-                                <button onclick="openEditPaymentModal(${p.id}, 'Cliente', null, null)" class="text-slate-400 hover:text-blue-600 p-1" title="Editar Pago"><i data-lucide="edit" class="w-3.5 h-3.5"></i></button>
+                                <button type="button" onclick="openEditPaymentModal(${p.id}, 'Cliente', null, null)" class="text-blue-600 hover:text-blue-800 p-1 rounded hover:bg-blue-50 transition inline-flex items-center" title="Editar Pago">
+                                    <svg class="w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" />
+                                    </svg>
+                                </button>
                             `}
                         </td>
                     </tr>
                 `;
             }).join('');
         }
-
-        openModal('modal-booking-payments');
-        if (window.lucide) lucide.createIcons();
-    } catch (e) { console.error(e); }
+    }
 }
+
 
 async function loadPaymentsHistory() {
     try {
