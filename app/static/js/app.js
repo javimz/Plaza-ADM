@@ -1783,8 +1783,10 @@ function applyBookingSupplierFilter(supplierName) {
         if (kpisPanel) {
             kpisPanel.classList.remove('hidden');
             const netoEl = document.getElementById('hist-modal-supplier-neto');
+            const pagoEl = document.getElementById('hist-modal-supplier-pago');
             const saldoEl = document.getElementById('hist-modal-supplier-saldo');
             if (netoEl) netoEl.innerText = `${b.currency} $ ${netoProveedor.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+            if (pagoEl) pagoEl.innerText = `${b.currency} $ ${totalPagosProveedor.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
             if (saldoEl) saldoEl.innerText = `${b.currency} $ ${saldoProveedor.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
         }
     }
@@ -1830,7 +1832,8 @@ function renderBookingItemsAndPayments(b, filterSupplier) {
     const tbody = document.getElementById('hist-modal-payments-body');
     if (tbody) {
         const payments = b.payments || [];
-        const paymentsToShow = filterLower ? payments.filter(p => p.record_type === 'Proveedor' ? (p.supplier_name || '').trim().toLowerCase() === filterLower : true) : payments;
+        // When filtered by supplier, only show supplier payments matching that supplier (do NOT show customer payments)
+        const paymentsToShow = filterLower ? payments.filter(p => p.record_type === 'Proveedor' && (p.supplier_name || '').trim().toLowerCase() === filterLower) : payments;
 
         if (!paymentsToShow.length) {
             tbody.innerHTML = `<tr><td colspan="9" class="p-4 text-center text-slate-400">${filterLower ? 'No hay pagos vinculados a este proveedor en esta reserva' : 'No se han registrado pagos para esta reserva'}</td></tr>`;

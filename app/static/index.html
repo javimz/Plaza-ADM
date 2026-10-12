@@ -1627,7 +1627,7 @@
                 </div>
 
                 <!-- KPIs dinámicos del proveedor -->
-                <div id="hist-modal-supplier-kpis-panel" class="hidden grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-200">
+                <div id="hist-modal-supplier-kpis-panel" class="hidden grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-slate-200">
                     <div class="bg-white p-3.5 rounded-xl border border-blue-200 shadow-sm flex items-center justify-between">
                         <div>
                             <span class="text-[11px] font-bold text-blue-700 uppercase tracking-wide">Neto Proveedor</span>
@@ -1635,10 +1635,17 @@
                         </div>
                         <p class="text-lg font-bold text-blue-900" id="hist-modal-supplier-neto">$0.00</p>
                     </div>
+                    <div class="bg-white p-3.5 rounded-xl border border-rose-200 shadow-sm flex items-center justify-between">
+                        <div>
+                            <span class="text-[11px] font-bold text-rose-700 uppercase tracking-wide">Pago Proveedor</span>
+                            <p class="text-[11px] text-slate-500">Total pagos a proveedor</p>
+                        </div>
+                        <p class="text-lg font-bold text-rose-900" id="hist-modal-supplier-pago">$0.00</p>
+                    </div>
                     <div class="bg-white p-3.5 rounded-xl border border-amber-200 shadow-sm flex items-center justify-between">
                         <div>
                             <span class="text-[11px] font-bold text-amber-700 uppercase tracking-wide">Saldo Proveedor</span>
-                            <p class="text-[11px] text-slate-500">Venta menos pagos proveedor</p>
+                            <p class="text-[11px] text-slate-500">Neto menos pagos</p>
                         </div>
                         <p class="text-lg font-bold text-amber-900" id="hist-modal-supplier-saldo">$0.00</p>
                     </div>
@@ -1945,6 +1952,6 @@
     </div>
 
     <!-- Application Script -->
-    <script src="static/js/app.js?v=20261012_03"></script>
+    <script src="static/js/app.js?v=20261012_04"></script>
 </body>
 </html>
