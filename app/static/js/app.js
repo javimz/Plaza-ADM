@@ -1217,9 +1217,10 @@ async function loadSuppliersCache() {
 async function loadDashboard() {
     try {
         const data = await apiFetch('/api/reports/dashboard');
-        document.getElementById('dash-total-sales').innerText = `$ ${data.total_sales.toLocaleString('es-AR', {minimumFractionDigits: 2})}`;
-        document.getElementById('dash-total-collected').innerText = `$ ${data.total_collected.toLocaleString('es-AR', {minimumFractionDigits: 2})}`;
-        document.getElementById('dash-total-pending').innerText = `$ ${data.total_pending.toLocaleString('es-AR', {minimumFractionDigits: 2})}`;
+        const byCurrency = data.by_currency || {};
+        document.getElementById('dash-total-sales').innerText = formatProfitTotals(byCurrency, 'total_sales', data.total_sales);
+        document.getElementById('dash-total-collected').innerText = formatProfitTotals(byCurrency, 'total_collected', data.total_collected);
+        document.getElementById('dash-total-pending').innerText = formatProfitTotals(byCurrency, 'total_pending', data.total_pending);
         document.getElementById('dash-total-bookings').innerText = data.total_bookings;
         document.getElementById('dash-month-collected').innerText = `$ ${Number(data.month_collected || 0).toLocaleString('es-AR', {minimumFractionDigits: 2})}`;
         document.getElementById('dash-collection-rate').innerText = `${Number(data.collection_rate || 0).toLocaleString('es-AR', {maximumFractionDigits: 1})}%`;

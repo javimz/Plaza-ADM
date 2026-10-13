@@ -21,7 +21,7 @@ def get_dashboard_metrics(current_user: dict = Depends(get_current_user)):
     )
     budget_params = () if not budget_scope else (current_user.get("id"),)
 
-    # Total Bookings count & financial sums
+    # Total Bookings count & financial sums (general and grouped by currency)
     cursor.execute("""
         SELECT 
             COUNT(*) as total_bookings,
@@ -33,6 +33,27 @@ def get_dashboard_metrics(current_user: dict = Depends(get_current_user)):
         booking_params,
     )
     bk_stats = cursor.fetchone()
+
+    cursor.execute("""
+        SELECT 
+            COALESCE(currency, 'USD') as currency,
+            COALESCE(SUM(total_amount), 0) as total_sales,
+            COALESCE(SUM(paid_amount), 0) as total_collected,
+            COALESCE(SUM(balance_due), 0) as total_pending
+        FROM bookings
+        WHERE status NOT IN ('Cancelada', 'En presupuesto')""" + booking_scope + """
+        GROUP BY COALESCE(currency, 'USD');""",
+        booking_params,
+    )
+    by_currency = {}
+    for r in cursor.fetchall():
+        c_code = (r["currency"] or "USD").strip().upper()
+        by_currency[c_code] = {
+            "total_sales": float(r["total_sales"] or 0),
+            "total_collected": float(r["total_collected"] or 0),
+            "total_pending": float(r["total_pending"] or 0),
+        }
+
 
     cursor.execute("""
         SELECT COUNT(*)
@@ -301,5 +322,6 @@ def get_dashboard_metrics(current_user: dict = Depends(get_current_user)):
         "supplier_reminders": supplier_reminders,
         "passport_alerts": passport_alerts,
         "birthday_alerts": birthday_alerts,
-        "upcoming_departures": upcoming_departures
+        "upcoming_departures": upcoming_departures,
+        "by_currency": by_currency
     }
