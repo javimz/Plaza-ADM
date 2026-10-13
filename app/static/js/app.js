@@ -817,6 +817,22 @@ function formatProfitTotals(byCurrency, key, fallback = 0) {
     return entries.map(([currency, totals]) => formatProfitAmount(currency, totals[key])).join(' · ');
 }
 
+function formatProfitTotalsStacked(byCurrency, key, fallback = 0) {
+    const entries = Object.entries(byCurrency || {});
+    if (entries.length === 0) {
+        return `<span class="block whitespace-nowrap">${formatProfitAmount('USD', fallback)}</span>`;
+    }
+    // Sort so ARS comes first if present, then USD, then others
+    entries.sort(([a], [b]) => {
+        if (a === 'ARS') return -1;
+        if (b === 'ARS') return 1;
+        if (a === 'USD') return -1;
+        if (b === 'USD') return 1;
+        return a.localeCompare(b);
+    });
+    return entries.map(([currency, totals]) => `<span class="block whitespace-nowrap">${formatProfitAmount(currency, totals[key])}</span>`).join('');
+}
+
 function escapeProfitText(value) {
     const map = { "&": "&amp;", "<": "&lt;", ">": "&gt;", "\x22": "&quot;", "\x27": "&#39;" };
     return String(value != null ? value : '').replace(/[&<>"']/g, char => map[char]);
@@ -1218,9 +1234,9 @@ async function loadDashboard() {
     try {
         const data = await apiFetch('/api/reports/dashboard');
         const byCurrency = data.by_currency || {};
-        document.getElementById('dash-total-sales').innerText = formatProfitTotals(byCurrency, 'total_sales', data.total_sales);
-        document.getElementById('dash-total-collected').innerText = formatProfitTotals(byCurrency, 'total_collected', data.total_collected);
-        document.getElementById('dash-total-pending').innerText = formatProfitTotals(byCurrency, 'total_pending', data.total_pending);
+        document.getElementById('dash-total-sales').innerHTML = formatProfitTotalsStacked(byCurrency, 'total_sales', data.total_sales);
+        document.getElementById('dash-total-collected').innerHTML = formatProfitTotalsStacked(byCurrency, 'total_collected', data.total_collected);
+        document.getElementById('dash-total-pending').innerHTML = formatProfitTotalsStacked(byCurrency, 'total_pending', data.total_pending);
         document.getElementById('dash-total-bookings').innerText = data.total_bookings;
         document.getElementById('dash-month-collected').innerText = `$ ${Number(data.month_collected || 0).toLocaleString('es-AR', {minimumFractionDigits: 2})}`;
         document.getElementById('dash-collection-rate').innerText = `${Number(data.collection_rate || 0).toLocaleString('es-AR', {maximumFractionDigits: 1})}%`;
