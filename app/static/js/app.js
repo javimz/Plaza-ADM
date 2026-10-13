@@ -650,7 +650,7 @@ function openSupplierPaymentModal(payableId) {
     document.getElementById('supplier-payment-subtitle').innerText = `${payable.supplier_name} · ${payable.concept}`;
     document.getElementById('supplier-payment-balance').innerText = formatProfitAmount(payable.currency, payable.balance_due);
     const amount = document.getElementById('supplier-payment-amount');
-    amount.value = payable.balance_due ? payable.balance_due.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '';
+    amount.value = '';
     document.getElementById('supplier-payment-date').value = localDateString();
     openModal('modal-supplier-payment');
 }
@@ -658,8 +658,22 @@ function openSupplierPaymentModal(payableId) {
 async function saveSupplierPayment(event) {
     event.preventDefault();
     const payableId = document.getElementById('supplier-payment-payable-id').value;
+    const amountInput = document.getElementById('supplier-payment-amount');
+    const amountRaw = (amountInput.value || '').trim();
+    if (!amountRaw) {
+        alert('El importe a pagar es obligatorio.');
+        amountInput.focus();
+        return;
+    }
+    const amount = parseCurrencyInput(amountRaw);
+    if (isNaN(amount) || amount <= 0) {
+        alert('El importe a pagar debe ser mayor a 0.');
+        amountInput.focus();
+        return;
+    }
+
     const payload = {
-        amount: parseCurrencyInput(document.getElementById('supplier-payment-amount').value),
+        amount: amount,
         payment_date: document.getElementById('supplier-payment-date').value,
         payment_method: document.getElementById('supplier-payment-method').value,
         reference: document.getElementById('supplier-payment-reference').value.trim(),
@@ -2195,7 +2209,6 @@ function togglePaymentPartyFields() {
                 balanceDue.innerText = `${booking.currency} $ ${costBal.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
                 balanceDue.className = costBal <= 0 ? 'text-slate-500 font-bold' : 'text-rose-600 font-bold';
             }
-            document.getElementById('payment-amount').value = costBal > 0 ? costBal.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '';
         } else {
             if (balanceLabel) balanceLabel.innerText = 'Saldo Restante Cliente:';
             const clientBal = Math.max(0, Number(booking.balance_due || 0));
@@ -2203,7 +2216,6 @@ function togglePaymentPartyFields() {
                 balanceDue.innerText = `${booking.currency} $ ${clientBal.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
                 balanceDue.className = clientBal <= 0 ? 'text-slate-500 font-bold' : 'text-amber-600 font-bold';
             }
-            document.getElementById('payment-amount').value = clientBal > 0 ? clientBal.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '';
         }
     }
 }
@@ -2241,6 +2253,7 @@ async function openPaymentModal(bookingId, partyType = 'Cliente') {
     document.getElementById('payment-supplier-id').value = '';
     togglePaymentPartyFields();
 
+    document.getElementById('payment-amount').value = '';
     document.getElementById('payment-date').value = localDateString();
     document.getElementById('payment-concept').value = '';
     document.getElementById('payment-reference').value = '';
@@ -2255,7 +2268,15 @@ async function savePayment(e) {
     const booking = bookingsCache.find(item => item.id === bookingId);
     if (!booking) return;
 
-    const amount = parseCurrencyInput(document.getElementById('payment-amount').value);
+    const amountInput = document.getElementById('payment-amount');
+    const amountRaw = (amountInput.value || '').trim();
+    if (!amountRaw) {
+        alert('El monto a pagar es obligatorio.');
+        amountInput.focus();
+        return;
+    }
+
+    const amount = parseCurrencyInput(amountRaw);
     const paymentDate = document.getElementById('payment-date').value;
     const paymentMethod = document.getElementById('payment-method').value;
     const concept = document.getElementById('payment-concept').value.trim();
@@ -2264,7 +2285,8 @@ async function savePayment(e) {
     const isSupplier = document.getElementById('payment-party-type').value === 'Proveedor';
 
     if (isNaN(amount) || amount <= 0) {
-        alert('El monto del pago debe ser mayor a 0.');
+        alert('El monto a pagar debe ser mayor a 0.');
+        amountInput.focus();
         return;
     }
 
