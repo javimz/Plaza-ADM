@@ -822,12 +822,12 @@ function formatProfitTotalsStacked(byCurrency, key, fallback = 0) {
     if (entries.length === 0) {
         return `<span class="block whitespace-nowrap">${formatProfitAmount('USD', fallback)}</span>`;
     }
-    // Sort so ARS comes first if present, then USD, then others
+    // Sort so USD comes first if present, then ARS, then others
     entries.sort(([a], [b]) => {
-        if (a === 'ARS') return -1;
-        if (b === 'ARS') return 1;
         if (a === 'USD') return -1;
         if (b === 'USD') return 1;
+        if (a === 'ARS') return -1;
+        if (b === 'ARS') return 1;
         return a.localeCompare(b);
     });
     return entries.map(([currency, totals]) => `<span class="block whitespace-nowrap">${formatProfitAmount(currency, totals[key])}</span>`).join('');
@@ -845,15 +845,25 @@ async function loadProfits() {
         const totals = data.summary || {};
         const byCurrency = totals.by_currency || {};
         const supplierPayments = totals.supplier_payments_by_currency || {};
-        const financialCurrencies = [...new Set([...Object.keys(byCurrency), ...Object.keys(supplierPayments)])].sort();
-        document.getElementById('kpi-total-sale').innerText = formatProfitTotals(byCurrency, 'total_sale', totals.total_sale);
-        document.getElementById('kpi-total-cost').innerText = formatProfitTotals(byCurrency, 'total_cost', totals.total_cost);
-        document.getElementById('kpi-gross-profit').innerText = formatProfitTotals(byCurrency, 'gross_profit', totals.gross_profit);
-        document.getElementById('kpi-paid-comm').innerText = financialCurrencies.map(currency => formatProfitAmount(currency, supplierPayments[currency] || 0)).join(' · ') || formatProfitAmount('USD', 0);
-        document.getElementById('kpi-pending-comm').innerText = financialCurrencies.map(currency => formatProfitAmount(
-            currency,
-            Number((byCurrency[currency] || {}).gross_profit || 0) - Number(supplierPayments[currency] || 0)
-        )).join(' · ') || formatProfitAmount('USD', 0);
+        const financialCurrencies = [...new Set([...Object.keys(byCurrency), ...Object.keys(supplierPayments)])].sort((a, b) => {
+            if (a === 'USD') return -1;
+            if (b === 'USD') return 1;
+            if (a === 'ARS') return -1;
+            if (b === 'ARS') return 1;
+            return a.localeCompare(b);
+        });
+        document.getElementById('kpi-total-sale').innerHTML = formatProfitTotalsStacked(byCurrency, 'total_sale', totals.total_sale);
+        document.getElementById('kpi-total-cost').innerHTML = formatProfitTotalsStacked(byCurrency, 'total_cost', totals.total_cost);
+        document.getElementById('kpi-gross-profit').innerHTML = formatProfitTotalsStacked(byCurrency, 'gross_profit', totals.gross_profit);
+        document.getElementById('kpi-paid-comm').innerHTML = financialCurrencies.length
+            ? financialCurrencies.map(currency => `<span class="block whitespace-nowrap">${formatProfitAmount(currency, supplierPayments[currency] || 0)}</span>`).join('')
+            : `<span class="block whitespace-nowrap">${formatProfitAmount('USD', 0)}</span>`;
+        document.getElementById('kpi-pending-comm').innerHTML = financialCurrencies.length
+            ? financialCurrencies.map(currency => `<span class="block whitespace-nowrap">${formatProfitAmount(
+                currency,
+                Number((byCurrency[currency] || {}).gross_profit || 0) - Number(supplierPayments[currency] || 0)
+            )}</span>`).join('')
+            : `<span class="block whitespace-nowrap">${formatProfitAmount('USD', 0)}</span>`;
 
         const body = document.getElementById('profits-table-body');
         if (profitsCache.length === 0) {
