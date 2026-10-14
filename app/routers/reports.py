@@ -112,24 +112,26 @@ def get_dashboard_metrics(current_user: dict = Depends(get_current_user)):
 
     # Recent six calendar months collections (Ingresos de clientes)
     cursor.execute("""
-        SELECT substr(p.payment_date, 1, 7) as month, bk.currency,
+        SELECT substr(p.payment_date, 1, 7) as month,
+               UPPER(COALESCE(bk.currency, 'USD')) as currency,
                COALESCE(SUM(p.amount), 0) as total
         FROM payments p
         JOIN bookings bk ON p.booking_id = bk.id
         WHERE substr(p.payment_date, 1, 7) >= strftime('%Y-%m', 'now', '-5 months', 'start of month')
-        """ + payment_scope + " GROUP BY substr(p.payment_date, 1, 7), bk.currency ORDER BY month ASC;",
+        """ + payment_scope + " GROUP BY substr(p.payment_date, 1, 7), UPPER(COALESCE(bk.currency, 'USD')) ORDER BY month ASC;",
         payment_params,
     )
     monthly_collections = [dict(row) for row in cursor.fetchall()]
 
     # Recent six calendar months expenses (Egresos y pagos a proveedores)
     cursor.execute("""
-        SELECT substr(spp.payment_date, 1, 7) as month, sp.currency,
+        SELECT substr(spp.payment_date, 1, 7) as month,
+               UPPER(COALESCE(sp.currency, 'USD')) as currency,
                COALESCE(SUM(spp.amount), 0) as total
         FROM supplier_payments spp
         JOIN supplier_payables sp ON sp.id = spp.payable_id
         WHERE substr(spp.payment_date, 1, 7) >= strftime('%Y-%m', 'now', '-5 months', 'start of month')
-        GROUP BY substr(spp.payment_date, 1, 7), sp.currency ORDER BY month ASC;
+        GROUP BY substr(spp.payment_date, 1, 7), UPPER(COALESCE(sp.currency, 'USD')) ORDER BY month ASC;
     """)
     monthly_expenses = [dict(row) for row in cursor.fetchall()]
 

@@ -1402,6 +1402,7 @@ async function loadDashboard() {
 
 function renderDashboardCharts(monthlyCollections, monthlyExpenses, bookingsByStatus) {
     const monthlyChart = document.getElementById('dashboard-monthly-chart');
+    if (!monthlyChart) return;
     const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
     const now = new Date();
     const months = Array.from({length: 6}, (_, index) => {
@@ -1410,54 +1411,85 @@ function renderDashboardCharts(monthlyCollections, monthlyExpenses, bookingsBySt
         return {key, label: `${monthNames[date.getMonth()]} ${String(date.getFullYear()).slice(-2)}`};
     });
 
-    const currencies = new Set();
-    monthlyCollections.forEach(r => currencies.add(r.currency || 'USD'));
-    monthlyExpenses.forEach(r => currencies.add(r.currency || 'USD'));
-    if (!currencies.size) currencies.add('USD');
+    // Maps for USD and ARS
+    const incUsdMap = new Map();
+    const incArsMap = new Map();
+    const expUsdMap = new Map();
+    const expArsMap = new Map();
 
-    const chartsHtml = [...currencies].sort().map(currency => {
-        const incomeMap = new Map();
-        monthlyCollections.filter(r => (r.currency || 'USD') === currency).forEach(r => incomeMap.set(r.month, Number(r.total || 0)));
+    (monthlyCollections || []).forEach(r => {
+        const cur = (r.currency || 'USD').trim().toUpperCase();
+        const amt = Number(r.total || 0);
+        if (cur === 'ARS') {
+            incArsMap.set(r.month, (incArsMap.get(r.month) || 0) + amt);
+        } else {
+            incUsdMap.set(r.month, (incUsdMap.get(r.month) || 0) + amt);
+        }
+    });
 
-        const expenseMap = new Map();
-        monthlyExpenses.filter(r => (r.currency || 'USD') === currency).forEach(r => expenseMap.set(r.month, Number(r.total || 0)));
+    (monthlyExpenses || []).forEach(r => {
+        const cur = (r.currency || 'USD').trim().toUpperCase();
+        const amt = Number(r.total || 0);
+        if (cur === 'ARS') {
+            expArsMap.set(r.month, (expArsMap.get(r.month) || 0) + amt);
+        } else {
+            expUsdMap.set(r.month, (expUsdMap.get(r.month) || 0) + amt);
+        }
+    });
 
-        const maxVal = Math.max(1, ...months.flatMap(m => [incomeMap.get(m.key) || 0, expenseMap.get(m.key) || 0]));
+    // Max values per currency to normalize height independently for USD and ARS
+    const maxUsd = Math.max(1, ...months.flatMap(m => [incUsdMap.get(m.key) || 0, expUsdMap.get(m.key) || 0]));
+    const maxArs = Math.max(1, ...months.flatMap(m => [incArsMap.get(m.key) || 0, expArsMap.get(m.key) || 0]));
 
-        return `
-            <div class="min-w-full h-full flex flex-col">
-                <div class="flex items-center justify-between text-xs text-slate-400 mb-2">
-                    <span class="font-bold text-slate-600">${escapeProfitText(currency)}</span>
-                </div>
-                <div class="flex-1 flex items-end gap-2 sm:gap-6 border-b border-slate-200 pb-1">
-                    ${months.map(month => {
-                        const inc = incomeMap.get(month.key) || 0;
-                        const exp = expenseMap.get(month.key) || 0;
-                        const incHeight = inc > 0 ? Math.max(5, (inc / maxVal) * 100) : 2;
-                        const expHeight = exp > 0 ? Math.max(5, (exp / maxVal) * 100) : 2;
+    const chartHtml = `
+        <div class="min-w-full h-full flex flex-col justify-end">
+            <div class="flex-1 flex items-end gap-2 sm:gap-6 border-b border-slate-200 pb-1">
+                ${months.map(month => {
+                    const incUsd = incUsdMap.get(month.key) || 0;
+                    const incArs = incArsMap.get(month.key) || 0;
+                    const expUsd = expUsdMap.get(month.key) || 0;
+                    const expArs = expArsMap.get(month.key) || 0;
 
-                        return `
-                            <div class="flex-1 h-full flex flex-col justify-end items-center gap-1.5 group relative" title="${month.label} | Ingresos: ${formatProfitAmount(currency, inc)} - Egresos: ${formatProfitAmount(currency, exp)}">
-                                <div class="flex items-end gap-1.5 w-full justify-center h-44">
-                                    <!-- Ingresos -->
-                                    <div class="w-full max-w-5 rounded-t-md ${inc ? 'bg-gradient-to-t from-blue-600 to-cyan-400' : 'bg-slate-100'} transition-all duration-300 relative group/bar" style="height:${incHeight}%">
-                                        ${inc ? `<div class="opacity-0 group-hover/bar:opacity-100 absolute -top-6 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow whitespace-nowrap z-10 pointer-events-none">${inc.toLocaleString('es-AR', {maximumFractionDigits: 0})}</div>` : ''}
-                                    </div>
-                                    <!-- Egresos -->
-                                    <div class="w-full max-w-5 rounded-t-md ${exp ? 'bg-gradient-to-t from-rose-600 to-rose-400' : 'bg-slate-100'} transition-all duration-300 relative group/bar" style="height:${expHeight}%">
-                                        ${exp ? `<div class="opacity-0 group-hover/bar:opacity-100 absolute -top-6 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow whitespace-nowrap z-10 pointer-events-none">${exp.toLocaleString('es-AR', {maximumFractionDigits: 0})}</div>` : ''}
-                                    </div>
+                    const incUsdHeight = incUsd > 0 ? Math.max(6, (incUsd / maxUsd) * 100) : 2;
+                    const incArsHeight = incArs > 0 ? Math.max(6, (incArs / maxArs) * 100) : 2;
+                    const expUsdHeight = expUsd > 0 ? Math.max(6, (expUsd / maxUsd) * 100) : 2;
+                    const expArsHeight = expArs > 0 ? Math.max(6, (expArs / maxArs) * 100) : 2;
+
+                    const tooltipText = `${month.label}
+Ingresos USD: ${formatProfitAmount('USD', incUsd)}
+Ingresos ARS: ${formatProfitAmount('ARS', incArs)}
+Egresos USD: ${formatProfitAmount('USD', expUsd)}
+Egresos ARS: ${formatProfitAmount('ARS', expArs)}`;
+
+                    return `
+                        <div class="flex-1 h-full flex flex-col justify-end items-center gap-1.5 group relative" title="${tooltipText}">
+                            <div class="flex items-end gap-1 sm:gap-1.5 w-full justify-center h-44">
+                                <!-- 1. Ingreso USD (Azul) -->
+                                <div class="w-full max-w-[14px] rounded-t-md ${incUsd ? 'bg-gradient-to-t from-blue-700 to-blue-500' : 'bg-slate-100'} transition-all duration-300 relative group/bar" style="height:${incUsdHeight}%">
+                                    ${incUsd ? `<div class="opacity-0 group-hover/bar:opacity-100 absolute -top-7 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow whitespace-nowrap z-20 pointer-events-none">USD $ ${incUsd.toLocaleString('es-AR', {maximumFractionDigits: 0})}</div>` : ''}
                                 </div>
-                                <span class="text-[10px] sm:text-xs text-slate-500 font-semibold whitespace-nowrap mt-1">${month.label}</span>
+                                <!-- 2. Ingreso ARS (Celeste) -->
+                                <div class="w-full max-w-[14px] rounded-t-md ${incArs ? 'bg-gradient-to-t from-sky-500 to-sky-300' : 'bg-slate-100'} transition-all duration-300 relative group/bar" style="height:${incArsHeight}%">
+                                    ${incArs ? `<div class="opacity-0 group-hover/bar:opacity-100 absolute -top-7 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow whitespace-nowrap z-20 pointer-events-none">ARS $ ${incArs.toLocaleString('es-AR', {maximumFractionDigits: 0})}</div>` : ''}
+                                </div>
+                                <!-- 3. Egreso USD (Rojo / Rose) -->
+                                <div class="w-full max-w-[14px] rounded-t-md ${expUsd ? 'bg-gradient-to-t from-rose-700 to-rose-500' : 'bg-slate-100'} transition-all duration-300 relative group/bar" style="height:${expUsdHeight}%">
+                                    ${expUsd ? `<div class="opacity-0 group-hover/bar:opacity-100 absolute -top-7 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow whitespace-nowrap z-20 pointer-events-none">USD $ ${expUsd.toLocaleString('es-AR', {maximumFractionDigits: 0})}</div>` : ''}
+                                </div>
+                                <!-- 4. Egreso ARS (Naranja / Ámbar) -->
+                                <div class="w-full max-w-[14px] rounded-t-md ${expArs ? 'bg-gradient-to-t from-amber-600 to-amber-400' : 'bg-slate-100'} transition-all duration-300 relative group/bar" style="height:${expArsHeight}%">
+                                    ${expArs ? `<div class="opacity-0 group-hover/bar:opacity-100 absolute -top-7 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow whitespace-nowrap z-20 pointer-events-none">ARS $ ${expArs.toLocaleString('es-AR', {maximumFractionDigits: 0})}</div>` : ''}
+                                </div>
                             </div>
-                        `;
-                    }).join('')}
-                </div>
+                            <span class="text-[10px] sm:text-xs text-slate-500 font-semibold whitespace-nowrap mt-1">${month.label}</span>
+                        </div>
+                    `;
+                }).join('')}
             </div>
-        `;
-    }).join('');
+        </div>
+    `;
 
-    monthlyChart.innerHTML = chartsHtml || '<p class="text-sm text-slate-400 py-8 text-center">No hay datos para mostrar.</p>';
+    monthlyChart.innerHTML = chartHtml;
 
     const statusChart = document.getElementById('dashboard-status-chart');
     const statuses = Object.entries(bookingsByStatus).sort((a, b) => b[1] - a[1]);
