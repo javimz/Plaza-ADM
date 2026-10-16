@@ -21,6 +21,8 @@ class SupplierPayableCreate(BaseModel):
     notes: Optional[str] = ""
     booking_id: Optional[int] = None
     budget_id: Optional[int] = None
+    budget_item_id: Optional[int] = None
+    client_id: Optional[int] = None
 
 
 class SupplierExpenseCreate(BaseModel):
@@ -35,6 +37,8 @@ class SupplierExpenseCreate(BaseModel):
     notes: Optional[str] = ""
     booking_id: Optional[int] = None
     budget_id: Optional[int] = None
+    budget_item_id: Optional[int] = None
+    client_id: Optional[int] = None
 
 
 class SupplierPaymentCreate(BaseModel):
@@ -93,6 +97,11 @@ def _load_payables(cursor, today: date):
              bk.booking_number,
              COALESCE(sp.budget_id, bk.budget_id) as related_budget_id,
              b.budget_number,
+             sp.budget_item_id,
+             COALESCE(sp.client_id, bi.client_id) as client_id,
+             COALESCE(c.name, c_item.name) as client_name,
+             bi.service_type as item_service_type,
+             bi.description as item_description,
                COALESCE(SUM(spp.amount), 0) as paid_amount,
                COUNT(spp.id) as payment_count,
                MAX(spp.payment_date) as last_payment_date
@@ -100,6 +109,9 @@ def _load_payables(cursor, today: date):
         JOIN suppliers s ON s.id = sp.supplier_id
         LEFT JOIN bookings bk ON bk.id = sp.booking_id
         LEFT JOIN budgets b ON b.id = COALESCE(sp.budget_id, bk.budget_id)
+        LEFT JOIN budget_items bi ON bi.id = sp.budget_item_id
+        LEFT JOIN clients c ON c.id = sp.client_id
+        LEFT JOIN clients c_item ON c_item.id = bi.client_id
         LEFT JOIN supplier_payments spp ON spp.payable_id = sp.id
         GROUP BY sp.id
         ORDER BY sp.due_date ASC, sp.id DESC;
@@ -204,15 +216,23 @@ def create_supplier_payable(payload: SupplierPayableCreate, current_user: dict =
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Proveedor no encontrado")
         booking_id, budget_id = _validate_payable_link(cursor, payload.booking_id, payload.budget_id)
+        budget_item_id = payload.budget_item_id
+        client_id = payload.client_id
+        if budget_item_id:
+            cursor.execute("SELECT * FROM budget_items WHERE id = ?;", (budget_item_id,))
+            b_item = cursor.fetchone()
+            if b_item and not client_id and b_item["client_id"]:
+                client_id = b_item["client_id"]
+
         cursor.execute("""
             INSERT INTO supplier_payables
                 (supplier_id, concept, invoice_number, currency, total_amount, issue_date, due_date, notes,
-                 created_by_user_id, booking_id, budget_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                 created_by_user_id, booking_id, budget_id, budget_item_id, client_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
         """, (
             payload.supplier_id, payload.concept.strip(), payload.invoice_number or "",
             payload.currency or "USD", payload.total_amount, issue_date.isoformat(), due_date.isoformat(),
-            payload.notes or "", current_user.get("id"), booking_id, budget_id,
+            payload.notes or "", current_user.get("id"), booking_id, budget_id, budget_item_id, client_id,
         ))
         payable_id = cursor.lastrowid
         conn.commit()
@@ -234,15 +254,23 @@ def create_supplier_expense(payload: SupplierExpenseCreate, current_user: dict =
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Proveedor no encontrado")
         booking_id, budget_id = _validate_payable_link(cursor, payload.booking_id, payload.budget_id)
+        budget_item_id = payload.budget_item_id
+        client_id = payload.client_id
+        if budget_item_id:
+            cursor.execute("SELECT * FROM budget_items WHERE id = ?;", (budget_item_id,))
+            b_item = cursor.fetchone()
+            if b_item and not client_id and b_item["client_id"]:
+                client_id = b_item["client_id"]
+
         if booking_id is not None:
             cursor.execute("""
                 SELECT bk.id, bk.budget_id, COALESCE(b.total_cost, 0) as total_cost,
                        COALESCE((
-                           SELECT SUM(spp.amount)
-                           FROM supplier_payables sp
-                           JOIN supplier_payments spp ON spp.payable_id = sp.id
-                           WHERE sp.booking_id = bk.id
-                              OR (sp.booking_id IS NULL AND sp.budget_id = bk.budget_id)
+                            SELECT SUM(spp.amount)
+                            FROM supplier_payables sp
+                            JOIN supplier_payments spp ON spp.payable_id = sp.id
+                            WHERE sp.booking_id = bk.id
+                               OR (sp.booking_id IS NULL AND sp.budget_id = bk.budget_id)
                        ), 0) as supplier_paid_amount
                 FROM bookings bk
                 LEFT JOIN budgets b ON b.id = bk.budget_id
@@ -260,10 +288,10 @@ def create_supplier_expense(payload: SupplierExpenseCreate, current_user: dict =
             cursor.execute("""
                 SELECT b.id, COALESCE(b.total_cost, 0) as total_cost,
                        COALESCE((
-                           SELECT SUM(spp.amount)
-                           FROM supplier_payables sp
-                           JOIN supplier_payments spp ON spp.payable_id = sp.id
-                           WHERE sp.budget_id = b.id
+                            SELECT SUM(spp.amount)
+                            FROM supplier_payables sp
+                            JOIN supplier_payments spp ON spp.payable_id = sp.id
+                            WHERE sp.budget_id = b.id
                        ), 0) as supplier_paid_amount
                 FROM budgets b
                 WHERE b.id = ?;
@@ -280,12 +308,12 @@ def create_supplier_expense(payload: SupplierExpenseCreate, current_user: dict =
         cursor.execute("""
             INSERT INTO supplier_payables
                 (supplier_id, concept, invoice_number, currency, total_amount, issue_date, due_date, notes,
-                 created_by_user_id, booking_id, budget_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                 created_by_user_id, booking_id, budget_id, budget_item_id, client_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
         """, (
             payload.supplier_id, payload.concept.strip(), payload.invoice_number or "", payload.currency or "USD",
             payload.amount, payment_date.isoformat(), payment_date.isoformat(), payload.notes or "",
-            current_user.get("id"), booking_id, budget_id,
+            current_user.get("id"), booking_id, budget_id, budget_item_id, client_id,
         ))
         payable_id = cursor.lastrowid
         cursor.execute("""

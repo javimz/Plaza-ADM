@@ -953,6 +953,87 @@ class TestTravelAgencyApp(unittest.TestCase):
         self.assertEqual(updated_sp["payment_method"], "Efectivo")
         self.assertEqual(updated_sp["reference"], "REF-SUPP-EDIT")
 
+    def test_21_supplier_expense_associated_with_budget_item_and_client(self):
+        # Create budget with multiple items assigned to different clients and supplier
+        created = self.client.post("/api/budgets", json={
+            "client_id": 1,
+            "title": "Presupuesto con Items Asociados",
+            "destination": "Caribe",
+            "currency": "USD",
+            "items": [
+                {
+                    "service_type": "Hotel",
+                    "description": "Hotel Caribe 4 Noches",
+                    "client_id": 1,
+                    "supplier_id": 1,
+                    "cost_price": 400,
+                    "sale_price": 700,
+                    "quantity": 1,
+                },
+                {
+                    "service_type": "Excursion",
+                    "description": "Paseo en Catamaran",
+                    "client_id": 2,
+                    "supplier_id": 1,
+                    "cost_price": 200,
+                    "sale_price": 350,
+                    "quantity": 1,
+                }
+            ],
+        })
+        self.assertEqual(created.status_code, 200, created.text)
+        budget = created.json()
+        budget_id = budget["id"]
+
+        # Convert to booking
+        conv = self.client.post(f"/api/budgets/{budget_id}/convert-to-booking")
+        self.assertEqual(conv.status_code, 200, conv.text)
+        booking_id = conv.json()["booking_id"]
+
+        # Fetch booking details
+        booking_res = self.client.get(f"/api/bookings/{booking_id}")
+        self.assertEqual(booking_res.status_code, 200)
+        bk = booking_res.json()
+        self.assertEqual(len(bk["items"]), 2)
+        item1 = bk["items"][0]
+        self.assertEqual(item1["paid_cost"], 0.0)
+        self.assertEqual(item1["cost_balance"], 400.0)
+
+        # Register supplier expense linked to item1
+        expense_res = self.client.post("/api/supplier-payables/expenses", json={
+            "supplier_id": 1,
+            "concept": "Pago Hotel Caribe",
+            "currency": "USD",
+            "amount": 250.0,
+            "payment_date": "2026-10-16",
+            "payment_method": "Transferencia",
+            "reference": "OP-7788",
+            "booking_id": booking_id,
+            "budget_item_id": item1["id"],
+        })
+        self.assertEqual(expense_res.status_code, 200, expense_res.text)
+        payable = expense_res.json()
+        self.assertEqual(payable["budget_item_id"], item1["id"])
+        self.assertEqual(payable["client_id"], 1)
+        self.assertEqual(payable["item_service_type"], "Hotel")
+
+        # Refetch booking to verify item's paid_cost and cost_balance
+        bk_updated = self.client.get(f"/api/bookings/{booking_id}").json()
+        item1_updated = next(it for it in bk_updated["items"] if it["id"] == item1["id"])
+        self.assertEqual(item1_updated["paid_cost"], 250.0)
+        self.assertEqual(item1_updated["cost_balance"], 150.0)
+
+        # Verify supplier payments in booking details has item and passenger info
+        supp_payments = [p for p in bk_updated["payments"] if p.get("record_type") == "Proveedor"]
+        self.assertTrue(len(supp_payments) >= 1)
+        supp_pay = next(sp for sp in supp_payments if sp.get("budget_item_id") == item1["id"])
+        self.assertEqual(abs(supp_pay["amount"]), 250.0)
+        self.assertEqual(supp_pay["client_id"], 1)
+        self.assertEqual(supp_pay["item_service_type"], "Hotel")
+        self.assertEqual(supp_pay["item_description"], "Hotel Caribe 4 Noches")
+        self.assertTrue(supp_pay["client_name"])
+
 if __name__ == "__main__":
     unittest.main()
+
 

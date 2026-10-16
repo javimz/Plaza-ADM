@@ -205,10 +205,14 @@ def init_db():
         created_by_user_id INTEGER,
         booking_id INTEGER,
         budget_id INTEGER,
+        budget_item_id INTEGER,
+        client_id INTEGER,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(supplier_id) REFERENCES suppliers(id),
         FOREIGN KEY(booking_id) REFERENCES bookings(id),
         FOREIGN KEY(budget_id) REFERENCES budgets(id),
+        FOREIGN KEY(budget_item_id) REFERENCES budget_items(id),
+        FOREIGN KEY(client_id) REFERENCES clients(id),
         FOREIGN KEY(created_by_user_id) REFERENCES users(id)
     );
     """)
@@ -245,6 +249,12 @@ def init_db():
         cursor.execute("ALTER TABLE supplier_payables ADD COLUMN booking_id INTEGER REFERENCES bookings(id);")
     if "budget_id" not in payable_columns:
         cursor.execute("ALTER TABLE supplier_payables ADD COLUMN budget_id INTEGER REFERENCES budgets(id);")
+    if "budget_item_id" not in payable_columns:
+        cursor.execute("ALTER TABLE supplier_payables ADD COLUMN budget_item_id INTEGER REFERENCES budget_items(id);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_supplier_payables_budget_item ON supplier_payables(budget_item_id);")
+    if "client_id" not in payable_columns:
+        cursor.execute("ALTER TABLE supplier_payables ADD COLUMN client_id INTEGER REFERENCES clients(id);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_supplier_payables_client ON supplier_payables(client_id);")
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS supplier_payments (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

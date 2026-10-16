@@ -127,14 +127,27 @@ def get_booking(booking_id: int, current_user: dict = Depends(get_current_user))
         bk_dict["client_names"] = []
 
     cursor.execute("""
-        SELECT bi.*, s.name as supplier_name, c.name as client_name
+        SELECT bi.*, s.name as supplier_name, c.name as client_name,
+               COALESCE((
+                   SELECT SUM(spp.amount)
+                   FROM supplier_payables sp
+                   JOIN supplier_payments spp ON spp.payable_id = sp.id
+                   WHERE sp.budget_item_id = bi.id
+               ), 0) as paid_cost
         FROM budget_items bi
         LEFT JOIN suppliers s ON s.id = bi.supplier_id
         LEFT JOIN clients c ON c.id = bi.client_id
         WHERE bi.budget_id = ?
         ORDER BY bi.id;
     """, (bk["budget_id"],))
-    bk_dict["items"] = [dict(item) for item in cursor.fetchall()]
+    items_list = []
+    for row in cursor.fetchall():
+        item_dict = dict(row)
+        item_dict["paid_cost"] = float(item_dict.get("paid_cost") or 0.0)
+        total_cost = float(item_dict.get("cost_price") or 0.0) * int(item_dict.get("quantity") or 1)
+        item_dict["cost_balance"] = max(0.0, total_cost - item_dict["paid_cost"])
+        items_list.append(item_dict)
+    bk_dict["items"] = items_list
 
     cursor.execute("""
         SELECT COALESCE(SUM(spp.amount), 0)
@@ -162,10 +175,18 @@ def get_booking(booking_id: int, current_user: dict = Depends(get_current_user))
                spp.payment_method, spp.reference as reference_code, spp.notes,
                spp.created_at, spp.registered_by_user_id,
                u.full_name as registered_by_user_name,
-               s.name as supplier_name
+               s.name as supplier_name,
+               sp.budget_item_id,
+               COALESCE(sp.client_id, bi.client_id) as client_id,
+               COALESCE(c.name, c_item.name) as client_name,
+               bi.service_type as item_service_type,
+               bi.description as item_description
         FROM supplier_payments spp
         JOIN supplier_payables sp ON sp.id = spp.payable_id
         JOIN suppliers s ON s.id = sp.supplier_id
+        LEFT JOIN budget_items bi ON bi.id = sp.budget_item_id
+        LEFT JOIN clients c ON c.id = sp.client_id
+        LEFT JOIN clients c_item ON c_item.id = bi.client_id
         LEFT JOIN users u ON u.id = spp.registered_by_user_id
         WHERE sp.booking_id = ?
            OR (sp.booking_id IS NULL AND sp.budget_id = ?)
@@ -178,6 +199,11 @@ def get_booking(booking_id: int, current_user: dict = Depends(get_current_user))
             "amount": -float(expense["amount"]),
             "payment_type": "Egreso proveedor",
             "record_type": "Proveedor",
+            "budget_item_id": expense.get("budget_item_id"),
+            "client_id": expense.get("client_id"),
+            "client_name": expense.get("client_name"),
+            "item_service_type": expense.get("item_service_type"),
+            "item_description": expense.get("item_description"),
         })
         bk_dict["payments"].append(expense)
     bk_dict["payments"].sort(key=lambda payment: (payment.get("payment_date") or "", payment["id"]), reverse=True)

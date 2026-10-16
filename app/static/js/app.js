@@ -1850,9 +1850,18 @@ async function showBookingPaymentsHistory(bookingId) {
         if (addBtn) {
             if (b.balance_due > 0) {
                 addBtn.style.display = 'inline-block';
-                addBtn.onclick = () => { closeModal('modal-booking-payments'); openPaymentModal(b.id); };
+                addBtn.onclick = () => { closeModal('modal-booking-payments'); openPaymentModal(b.id, 'Cliente'); };
             } else {
                 addBtn.style.display = 'none';
+            }
+        }
+        const addSuppBtn = document.getElementById('hist-modal-add-supplier-payment-btn');
+        if (addSuppBtn) {
+            if (canManageSupplierPayables()) {
+                addSuppBtn.style.display = 'inline-block';
+                addSuppBtn.onclick = () => { closeModal('modal-booking-payments'); openPaymentModal(b.id, 'Proveedor'); };
+            } else {
+                addSuppBtn.style.display = 'none';
             }
         }
 
@@ -2024,20 +2033,39 @@ function renderBookingItemsAndPayments(b, filterSupplier = '', filterClient = ''
     if (itemsBody) {
         itemsBody.innerHTML = itemsToShow.length ? itemsToShow.map(item => {
             const cost = Number(item.cost_price || 0);
+            const qty = Number(item.quantity) || 1;
+            const totalItemCost = cost * qty;
+            const paidCost = Number(item.paid_cost || 0);
+            const isPaidFull = totalItemCost > 0 && paidCost >= (totalItemCost - 0.01);
+            const paidCostBadge = isPaidFull
+                ? `<span class="inline-flex items-center text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200" title="100% Pagado">${formatProfitAmount(b.currency, paidCost)}</span>`
+                : (paidCost > 0
+                    ? `<span class="inline-flex items-center text-amber-700 font-bold bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200" title="Pago parcial">${formatProfitAmount(b.currency, paidCost)}</span>`
+                    : `<span class="text-slate-400">$ 0.00</span>`);
+
             const sale = Number(item.sale_price || 0);
             const saldo = sale - cost;
+
+            const actionCell = (cost > 0 && canManageSupplierPayables())
+                ? `<button type="button" onclick="closeModal('modal-booking-payments'); openPaymentModal(${b.id}, 'Proveedor', ${item.id})" class="text-[11px] bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold px-2 py-1 rounded-lg border border-rose-200 transition shadow-xs flex items-center gap-1 mx-auto" title="Registrar pago al proveedor por este servicio">
+                    + Pagar
+                </button>`
+                : `<span class="text-slate-300">-</span>`;
+
             return `
             <tr class="border-b border-slate-100 hover:bg-slate-50 transition">
                 <td class="p-3">${escapeProfitText(item.service_type)}</td>
                 <td class="p-3 font-medium text-slate-800">${escapeProfitText(item.description)}</td>
                 <td class="p-3 font-semibold text-sky-800">${escapeProfitText(item.client_name || '-')}</td>
                 <td class="p-3 font-semibold text-blue-700">${escapeProfitText(item.supplier_name || '-')}</td>
-                <td class="p-3 text-right">${Number(item.quantity || 0)}</td>
+                <td class="p-3 text-right">${qty}</td>
                 <td class="p-3 text-right">${formatProfitAmount(b.currency, cost)}</td>
+                <td class="p-3 text-right">${paidCostBadge}</td>
                 <td class="p-3 text-right">${formatProfitAmount(b.currency, sale)}</td>
                 <td class="p-3 text-right font-semibold ${saldo < 0 ? 'text-rose-700' : 'text-slate-800'}">${formatProfitAmount(b.currency, saldo)}</td>
+                <td class="p-3 text-center">${actionCell}</td>
             </tr>`;
-        }).join('') : `<tr><td colspan="8" class="p-4 text-center text-slate-400">${(filterSuppLower || filterCliId) ? 'No hay ítems que coincidan con los filtros seleccionados.' : 'No hay ítems de presupuesto asociados a esta reserva.'}</td></tr>`;
+        }).join('') : `<tr><td colspan="10" class="p-4 text-center text-slate-400">${(filterSuppLower || filterCliId) ? 'No hay ítems que coincidan con los filtros seleccionados.' : 'No hay ítems de presupuesto asociados a esta reserva.'}</td></tr>`;
     }
 
     // 2. Render Payments
@@ -2048,7 +2076,7 @@ function renderBookingItemsAndPayments(b, filterSupplier = '', filterClient = ''
         if (filterSuppLower) {
             paymentsToShow = paymentsToShow.filter(p => p.record_type === 'Proveedor' && (p.supplier_name || '').trim().toLowerCase() === filterSuppLower);
         } else if (filterCliId) {
-            paymentsToShow = paymentsToShow.filter(p => p.record_type === 'Cliente' && Number(p.client_id) === filterCliId);
+            paymentsToShow = paymentsToShow.filter(p => Number(p.client_id) === filterCliId);
         }
 
         if (!paymentsToShow.length) {
@@ -2057,9 +2085,20 @@ function renderBookingItemsAndPayments(b, filterSupplier = '', filterClient = ''
             tbody.innerHTML = paymentsToShow.map(p => {
                 const timePart = p.created_at ? (p.created_at.includes(' ') ? p.created_at.split(' ')[1] : p.created_at) : '-';
                 const isSupplierExpense = p.record_type === 'Proveedor';
-                const partyBadge = isSupplierExpense
-                    ? `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-rose-100 text-rose-800">Prov: ${escapeProfitText(p.supplier_name || 'Proveedor')}</span>`
-                    : `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-sky-100 text-sky-800">${escapeProfitText(p.client_name || 'Cliente')}</span>`;
+                let partyBadge = '';
+                if (isSupplierExpense) {
+                    const itemInfo = p.item_description ? `<span class="block text-[10px] text-slate-500 font-normal truncate max-w-[150px]" title="${escapeProfitText(p.item_service_type || '')}: ${escapeProfitText(p.item_description)}">[${escapeProfitText(p.item_service_type || 'Ítem')}] ${escapeProfitText(p.item_description)}</span>` : '';
+                    const passInfo = p.client_name ? `<span class="block text-[10px] text-sky-700 font-semibold truncate max-w-[150px]" title="Pasajero: ${escapeProfitText(p.client_name)}">Pasajero: ${escapeProfitText(p.client_name)}</span>` : '';
+                    partyBadge = `
+                        <div>
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-rose-100 text-rose-800">Prov: ${escapeProfitText(p.supplier_name || 'Proveedor')}</span>
+                            ${itemInfo}
+                            ${passInfo}
+                        </div>
+                    `;
+                } else {
+                    partyBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-sky-100 text-sky-800">${escapeProfitText(p.client_name || 'Cliente')}</span>`;
+                }
 
                 return `
                     <tr class="border-b border-slate-100 hover:bg-slate-50 transition text-xs">
@@ -2410,11 +2449,16 @@ function togglePaymentPartyFields() {
         const balanceLabel = document.getElementById('pay-modal-balance-label');
         const balanceDue = document.getElementById('pay-modal-balance-due');
         if (isSupplier) {
-            if (balanceLabel) balanceLabel.innerText = 'Saldo Costo Proveedor:';
-            const costBal = Math.max(0, Number(booking.cost_balance || 0));
-            if (balanceDue) {
-                balanceDue.innerText = `${booking.currency} $ ${costBal.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-                balanceDue.className = costBal <= 0 ? 'text-slate-500 font-bold' : 'text-rose-600 font-bold';
+            const currentItemVal = document.getElementById('payment-budget-item-id')?.value;
+            if (currentItemVal) {
+                onPaymentBudgetItemChange(currentItemVal);
+            } else {
+                if (balanceLabel) balanceLabel.innerText = 'Saldo Costo Proveedor:';
+                const costBal = Math.max(0, Number(booking.cost_balance || 0));
+                if (balanceDue) {
+                    balanceDue.innerText = `${booking.currency} $ ${costBal.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+                    balanceDue.className = costBal <= 0 ? 'text-slate-500 font-bold' : 'text-rose-600 font-bold';
+                }
             }
         } else {
             if (balanceLabel) balanceLabel.innerText = 'Saldo Restante Cliente:';
@@ -2427,7 +2471,58 @@ function togglePaymentPartyFields() {
     }
 }
 
-async function openPaymentModal(bookingId, partyType = 'Cliente') {
+let currentPaymentModalBookingItems = [];
+
+function onPaymentBudgetItemChange(itemId) {
+    const bookingId = parseInt(document.getElementById('payment-booking-id').value);
+    const booking = bookingsCache.find(b => b.id === bookingId);
+    const balanceLabel = document.getElementById('pay-modal-balance-label');
+    const balanceDue = document.getElementById('pay-modal-balance-due');
+
+    if (!itemId) {
+        if (booking && balanceLabel && balanceDue) {
+            balanceLabel.innerText = 'Saldo Costo Proveedor:';
+            const costBal = Math.max(0, Number(booking.cost_balance || 0));
+            balanceDue.innerText = `${booking.currency} $ ${costBal.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+            balanceDue.className = costBal <= 0 ? 'text-slate-500 font-bold' : 'text-rose-600 font-bold';
+        }
+        return;
+    }
+
+    const item = (currentPaymentModalBookingItems || []).find(it => String(it.id) === String(itemId));
+    if (!item) return;
+
+    if (item.supplier_id) {
+        const suppSelect = document.getElementById('payment-supplier-id');
+        if (suppSelect) {
+            suppSelect.value = String(item.supplier_id);
+        }
+    }
+
+    const cost = Number(item.cost_price || 0) * (Number(item.quantity) || 1);
+    const balance = item.cost_balance !== undefined ? Number(item.cost_balance) : Math.max(0, cost - Number(item.paid_cost || 0));
+    const amountToFill = balance > 0 ? balance : cost;
+    const amountInput = document.getElementById('payment-amount');
+    if (amountInput) {
+        amountInput.value = amountToFill > 0
+            ? amountToFill.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+            : '';
+    }
+
+    const conceptInput = document.getElementById('payment-concept');
+    if (conceptInput) {
+        const paxInfo = item.client_name ? ` (Pasajero: ${item.client_name})` : '';
+        conceptInput.value = `Pago ${item.service_type || 'servicio'}: ${item.description || ''}${paxInfo}`;
+    }
+
+    if (balanceLabel && balanceDue && booking) {
+        balanceLabel.innerText = 'Saldo Pendiente Ítem:';
+        balanceDue.innerText = `${booking.currency} $ ${balance.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+        balanceDue.className = balance <= 0 ? 'text-slate-500 font-bold' : 'text-rose-600 font-bold';
+    }
+}
+
+async function openPaymentModal(bookingId, partyType = 'Cliente', targetItemId = null) {
     const booking = bookingsCache.find(b => b.id === bookingId);
     if (!booking) return;
 
@@ -2437,6 +2532,30 @@ async function openPaymentModal(bookingId, partyType = 'Cliente') {
     supplierSelect.innerHTML = '<option value="">Seleccionar proveedor...</option>' + suppliersCache.map(supplier =>
         `<option value="${supplier.id}">${escapeProfitText(supplier.name)} · ${escapeProfitText(supplier.category)}</option>`
     ).join('');
+
+    let fullBooking = (currentBookingDetailData && currentBookingDetailData.id === bookingId)
+        ? currentBookingDetailData
+        : null;
+    if (!fullBooking || !fullBooking.items) {
+        try {
+            fullBooking = await apiFetch(`/api/bookings/${bookingId}`);
+        } catch (e) {
+            console.error('Error fetching booking items for payment modal:', e);
+        }
+    }
+    currentPaymentModalBookingItems = (fullBooking && fullBooking.items) ? fullBooking.items : [];
+
+    const itemSelect = document.getElementById('payment-budget-item-id');
+    if (itemSelect) {
+        itemSelect.innerHTML = '<option value="">-- Sin asociar a un ítem específico --</option>' + currentPaymentModalBookingItems.map(it => {
+            const cost = Number(it.cost_price || 0) * (Number(it.quantity) || 1);
+            const bal = it.cost_balance !== undefined ? it.cost_balance : Math.max(0, cost - Number(it.paid_cost || 0));
+            const suppText = it.supplier_name ? ` · Prov: ${escapeProfitText(it.supplier_name)}` : '';
+            const passText = it.client_name ? ` · Pax: ${escapeProfitText(it.client_name)}` : '';
+            const costText = ` [Costo: $ ${cost.toLocaleString('es-AR', {minimumFractionDigits: 2})} | Saldo: $ ${bal.toLocaleString('es-AR', {minimumFractionDigits: 2})}]`;
+            return `<option value="${it.id}">[${escapeProfitText(it.service_type || 'Ítem')}] ${escapeProfitText(it.description || '')}${suppText}${passText}${costText}</option>`;
+        }).join('');
+    }
 
     if (!clientsCache.length) await loadClientsCache();
     const clientSelect = document.getElementById('payment-client-id');
@@ -2465,6 +2584,13 @@ async function openPaymentModal(bookingId, partyType = 'Cliente') {
     document.getElementById('payment-concept').value = '';
     document.getElementById('payment-reference').value = '';
     document.getElementById('payment-notes').value = '';
+
+    if (itemSelect) {
+        itemSelect.value = targetItemId ? String(targetItemId) : '';
+        if (targetItemId) {
+            onPaymentBudgetItemChange(targetItemId);
+        }
+    }
 
     openModal('modal-payment');
 }
@@ -2504,10 +2630,21 @@ async function savePayment(e) {
             return;
         }
 
+        const budgetItemId = parseInt(document.getElementById('payment-budget-item-id')?.value) || null;
+        const selectedItem = budgetItemId ? currentPaymentModalBookingItems.find(it => it.id === budgetItemId) : null;
+        const clientId = selectedItem?.client_id || null;
+
         const costBalance = Number(booking.cost_balance || 0);
         if (amount > costBalance + 0.01) {
             alert(`Error: El pago al proveedor ($ ${amount.toLocaleString('es-AR', {minimumFractionDigits: 2})}) supera el Saldo Costo de la reserva ($ ${costBalance.toLocaleString('es-AR', {minimumFractionDigits: 2})}).`);
             return;
+        }
+
+        if (selectedItem && selectedItem.cost_balance !== undefined && amount > (Number(selectedItem.cost_balance) + 0.01)) {
+            const itemBalStr = Number(selectedItem.cost_balance).toLocaleString('es-AR', {minimumFractionDigits: 2});
+            if (!confirm(`El monto ingresado ($ ${amount.toLocaleString('es-AR', {minimumFractionDigits: 2})}) supera el saldo pendiente de este ítem ($ ${itemBalStr}). ¿Desea registrar el pago de todas formas?`)) {
+                return;
+            }
         }
 
         try {
@@ -2523,9 +2660,14 @@ async function savePayment(e) {
                 notes,
                 booking_id: booking.id,
                 budget_id: booking.budget_id || null,
+                budget_item_id: budgetItemId,
+                client_id: clientId,
             });
             closeModal('modal-payment');
             await refreshAfterFinancialChange();
+            if (currentActiveBookingPaymentsId === booking.id) {
+                showBookingPaymentsHistory(booking.id).catch(console.error);
+            }
         } catch (err) {
             console.error(err);
         }
