@@ -91,12 +91,14 @@ def init_db():
         service_type TEXT NOT NULL,
         description TEXT NOT NULL,
         supplier_id INTEGER,
+        client_id INTEGER,
         cost_price REAL NOT NULL DEFAULT 0.0,
         sale_price REAL NOT NULL DEFAULT 0.0,
         quantity INTEGER NOT NULL DEFAULT 1,
         subtotal REAL NOT NULL DEFAULT 0.0,
         FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE,
-        FOREIGN KEY(supplier_id) REFERENCES suppliers(id)
+        FOREIGN KEY(supplier_id) REFERENCES suppliers(id),
+        FOREIGN KEY(client_id) REFERENCES clients(id)
     );
     """)
 
@@ -230,6 +232,12 @@ def init_db():
     payment_columns = {row["name"] for row in cursor.fetchall()}
     if "concept" not in payment_columns:
         cursor.execute("ALTER TABLE payments ADD COLUMN concept TEXT;")
+
+    cursor.execute("PRAGMA table_info(budget_items);")
+    budget_item_columns = {row["name"] for row in cursor.fetchall()}
+    if "client_id" not in budget_item_columns:
+        cursor.execute("ALTER TABLE budget_items ADD COLUMN client_id INTEGER REFERENCES clients(id);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_budget_items_client ON budget_items(client_id);")
 
     cursor.execute("PRAGMA table_info(supplier_payables);")
     payable_columns = {row["name"] for row in cursor.fetchall()}

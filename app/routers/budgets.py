@@ -69,9 +69,10 @@ def get_budgets(current_user: dict = Depends(get_current_user)):
             b_dict["client_names"] = []
 
         cursor.execute("""
-            SELECT bi.*, s.name as supplier_name
+            SELECT bi.*, s.name as supplier_name, c.name as client_name
             FROM budget_items bi
             LEFT JOIN suppliers s ON bi.supplier_id = s.id
+            LEFT JOIN clients c ON bi.client_id = c.id
             WHERE bi.budget_id = ?;
         """, (b["id"],))
         items = cursor.fetchall()
@@ -116,17 +117,21 @@ def get_budget(budget_id: int, current_user: dict = Depends(get_current_user)):
         b_dict["client_ids"] = [b["client_id"]]
     if b_dict["client_ids"]:
         c_placeholders = ",".join("?" for _ in b_dict["client_ids"])
-        cursor.execute(f"SELECT name FROM clients WHERE id IN ({c_placeholders}) ORDER BY name;", b_dict["client_ids"])
-        b_dict["client_names"] = [row["name"] for row in cursor.fetchall()]
+        cursor.execute(f"SELECT id, name FROM clients WHERE id IN ({c_placeholders}) ORDER BY name;", b_dict["client_ids"])
+        c_rows = cursor.fetchall()
+        b_dict["clients"] = [{"id": row["id"], "name": row["name"]} for row in c_rows]
+        b_dict["client_names"] = [row["name"] for row in c_rows]
         if b_dict["client_names"]:
             b_dict["client_name"] = ", ".join(b_dict["client_names"])
     else:
+        b_dict["clients"] = []
         b_dict["client_names"] = []
 
     cursor.execute("""
-        SELECT bi.*, s.name as supplier_name
+        SELECT bi.*, s.name as supplier_name, c.name as client_name
         FROM budget_items bi
         LEFT JOIN suppliers s ON bi.supplier_id = s.id
+        LEFT JOIN clients c ON bi.client_id = c.id
         WHERE bi.budget_id = ?;
     """, (budget_id,))
     items = cursor.fetchall()
@@ -246,9 +251,9 @@ def create_budget(payload: BudgetCreate, current_user: dict = Depends(get_curren
     for item in payload.items:
         subtotal = item.sale_price * item.quantity
         cursor.execute("""
-            INSERT INTO budget_items (budget_id, service_type, description, supplier_id, cost_price, sale_price, quantity, subtotal)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?);
-        """, (budget_id, item.service_type, item.description, item.supplier_id, item.cost_price, item.sale_price, item.quantity, subtotal))
+            INSERT INTO budget_items (budget_id, service_type, description, supplier_id, client_id, cost_price, sale_price, quantity, subtotal)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+        """, (budget_id, item.service_type, item.description, item.supplier_id, item.client_id, item.cost_price, item.sale_price, item.quantity, subtotal))
 
     if payload.status in ["Convertido", "Convertido a Reserva"]:
         _convert_budget_to_booking_internal(cursor, budget_id, current_user)
@@ -301,9 +306,9 @@ def update_budget(budget_id: int, payload: BudgetCreate, current_user: dict = De
     for item in payload.items:
         subtotal = item.sale_price * item.quantity
         cursor.execute("""
-            INSERT INTO budget_items (budget_id, service_type, description, supplier_id, cost_price, sale_price, quantity, subtotal)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?);
-        """, (budget_id, item.service_type, item.description, item.supplier_id, item.cost_price, item.sale_price, item.quantity, subtotal))
+            INSERT INTO budget_items (budget_id, service_type, description, supplier_id, client_id, cost_price, sale_price, quantity, subtotal)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+        """, (budget_id, item.service_type, item.description, item.supplier_id, item.client_id, item.cost_price, item.sale_price, item.quantity, subtotal))
 
     if payload.status in ["Convertido", "Convertido a Reserva"]:
         _convert_budget_to_booking_internal(cursor, budget_id, current_user)

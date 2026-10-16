@@ -116,17 +116,21 @@ def get_booking(booking_id: int, current_user: dict = Depends(get_current_user))
         bk_dict["client_ids"] = [bk["client_id"]]
     if bk_dict["client_ids"]:
         c_placeholders = ",".join("?" for _ in bk_dict["client_ids"])
-        cursor.execute(f"SELECT name FROM clients WHERE id IN ({c_placeholders}) ORDER BY name;", bk_dict["client_ids"])
-        bk_dict["client_names"] = [c_row["name"] for c_row in cursor.fetchall()]
+        cursor.execute(f"SELECT id, name FROM clients WHERE id IN ({c_placeholders}) ORDER BY name;", bk_dict["client_ids"])
+        c_rows = cursor.fetchall()
+        bk_dict["clients"] = [{"id": c_row["id"], "name": c_row["name"]} for c_row in c_rows]
+        bk_dict["client_names"] = [c_row["name"] for c_row in c_rows]
         if bk_dict["client_names"]:
             bk_dict["client_name"] = ", ".join(bk_dict["client_names"])
     else:
+        bk_dict["clients"] = []
         bk_dict["client_names"] = []
 
     cursor.execute("""
-        SELECT bi.*, s.name as supplier_name
+        SELECT bi.*, s.name as supplier_name, c.name as client_name
         FROM budget_items bi
         LEFT JOIN suppliers s ON s.id = bi.supplier_id
+        LEFT JOIN clients c ON c.id = bi.client_id
         WHERE bi.budget_id = ?
         ORDER BY bi.id;
     """, (bk["budget_id"],))
@@ -143,9 +147,10 @@ def get_booking(booking_id: int, current_user: dict = Depends(get_current_user))
     bk_dict["cost_balance"] = bk_dict["total_cost"] - bk_dict["supplier_paid_amount"]
 
     cursor.execute("""
-        SELECT p.*, u.full_name as registered_by_user_name
+        SELECT p.*, u.full_name as registered_by_user_name, c.name as client_name
         FROM payments p
         LEFT JOIN users u ON p.registered_by_user_id = u.id
+        LEFT JOIN clients c ON p.client_id = c.id
         WHERE p.booking_id = ?
         ORDER BY p.id DESC;
     """, (booking_id,))

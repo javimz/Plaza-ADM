@@ -401,6 +401,7 @@ function renderBudgetSelectedClients() {
     if (!container) return;
     if (!budgetSelectedClientIds.length) {
         container.innerHTML = '<span class="text-xs text-slate-400 italic">No hay clientes agregados. Busque arriba por nombre o DNI y presione ENTER para agregar.</span>';
+        updateBudgetItemClientSelectors();
         return;
     }
     container.innerHTML = budgetSelectedClientIds.map(id => {
@@ -412,6 +413,38 @@ function renderBudgetSelectedClients() {
             </span>
         `;
     }).join('');
+    updateBudgetItemClientSelectors();
+}
+
+function getBudgetItemClientOptionsHtml(selectedClientId = null) {
+    let html = '<option value="">-- Pasajero / Cliente --</option>';
+    const selectedClients = clientsCache.filter(c => budgetSelectedClientIds.includes(c.id));
+    if (selectedClients.length > 0) {
+        html += '<optgroup label="Pasajeros del Presupuesto">';
+        selectedClients.forEach(c => {
+            const isSel = (Number(selectedClientId) === c.id) || (!selectedClientId && selectedClients.length === 1);
+            html += `<option value="${c.id}" ${isSel ? 'selected' : ''}>${escapeProfitText(c.name)}</option>`;
+        });
+        html += '</optgroup>';
+    }
+    const otherClients = clientsCache.filter(c => !budgetSelectedClientIds.includes(c.id));
+    if (otherClients.length > 0) {
+        html += '<optgroup label="Otros Clientes">';
+        otherClients.forEach(c => {
+            const isSel = (Number(selectedClientId) === c.id);
+            html += `<option value="${c.id}" ${isSel ? 'selected' : ''}>${escapeProfitText(c.name)}</option>`;
+        });
+        html += '</optgroup>';
+    }
+    return html;
+}
+
+function updateBudgetItemClientSelectors() {
+    const clientSelects = document.querySelectorAll('#budget-items-container .item-client');
+    clientSelects.forEach(select => {
+        const currentVal = select.value ? parseInt(select.value) : null;
+        select.innerHTML = getBudgetItemClientOptionsHtml(currentVal);
+    });
 }
 
 function handleBudgetSellerSearch(query) {
@@ -1582,6 +1615,7 @@ function addBudgetItemRow(item = {}) {
     const rowId = 'item-row-' + Date.now() + '-' + Math.floor(Math.random()*1000);
 
     const suppliersOpts = suppliersCache.map(s => `<option value="${s.id}" ${item.supplier_id === s.id ? 'selected' : ''}>${escapeProfitText(s.name)}</option>`).join('');
+    const clientOpts = getBudgetItemClientOptionsHtml(item.client_id);
 
     const costVal = (item.cost_price !== undefined && item.cost_price !== null && item.cost_price !== '') 
         ? formatCurrencyInput(item.cost_price)
@@ -1591,8 +1625,8 @@ function addBudgetItemRow(item = {}) {
         : '';
 
     const html = `
-        <div id="${rowId}" class="grid grid-cols-12 gap-2 items-center bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-xs">
-            <div class="col-span-2">
+        <div id="${rowId}" class="grid grid-cols-1 md:grid-cols-[130px_1fr_160px_160px_110px_110px_36px] gap-2 items-center bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-xs">
+            <div>
                 <select class="item-type w-full p-2 border border-slate-300 rounded-lg outline-none bg-white">
                     <option value="Vuelo" ${item.service_type === 'Vuelo' ? 'selected' : ''}>Vuelo</option>
                     <option value="Hotel" ${item.service_type === 'Hotel' ? 'selected' : ''}>Hotel</option>
@@ -1602,23 +1636,28 @@ function addBudgetItemRow(item = {}) {
                     <option value="Otro" ${item.service_type === 'Otro' ? 'selected' : ''}>Otro</option>
                 </select>
             </div>
-            <div class="col-span-3">
+            <div>
                 <input type="text" class="item-desc w-full p-2 border border-slate-300 rounded-lg outline-none bg-white" placeholder="Descripción del servicio" value="${escapeProfitText(item.description || '')}">
             </div>
-            <div class="col-span-2">
+            <div>
+                <select class="item-client w-full p-2 border border-slate-300 rounded-lg outline-none bg-white font-medium text-slate-700">
+                    ${clientOpts}
+                </select>
+            </div>
+            <div>
                 <select class="item-supplier w-full p-2 border border-slate-300 rounded-lg outline-none bg-white">
                     <option value="">-- Proveedor --</option>
                     ${suppliersOpts}
                 </select>
             </div>
-            <div class="col-span-2">
+            <div>
                 <input type="text" inputmode="decimal" class="item-cost w-full p-2 border border-slate-300 rounded-lg outline-none bg-white text-right font-medium" placeholder="Costo" value="${costVal}" onblur="handleCurrencyBlur(this)">
             </div>
-            <div class="col-span-2">
+            <div>
                 <input type="text" inputmode="decimal" class="item-sale w-full p-2 border border-slate-300 rounded-lg outline-none bg-white text-right font-medium" placeholder="Venta" value="${saleVal}" onblur="handleCurrencyBlur(this)">
             </div>
-            <div class="col-span-1 text-center">
-                <button type="button" onclick="document.getElementById('${rowId}').remove()" class="text-rose-500 hover:text-rose-700 p-1"><i data-lucide="trash" class="w-4 h-4"></i></button>
+            <div class="text-center">
+                <button type="button" onclick="document.getElementById('${rowId}').remove()" class="text-rose-500 hover:text-rose-700 p-1" title="Eliminar ítem"><i data-lucide="trash" class="w-4 h-4"></i></button>
             </div>
         </div>
     `;
@@ -1638,14 +1677,24 @@ async function saveBudget(e) {
     }
 
     const itemRows = document.querySelectorAll('#budget-items-container > div');
-    const items = Array.from(itemRows).map(row => ({
-        service_type: row.querySelector('.item-type').value,
-        description: row.querySelector('.item-desc').value,
-        supplier_id: row.querySelector('.item-supplier').value ? parseInt(row.querySelector('.item-supplier').value) : null,
-        cost_price: parseCurrencyInput(row.querySelector('.item-cost').value),
-        sale_price: parseCurrencyInput(row.querySelector('.item-sale').value),
-        quantity: 1
-    }));
+    const items = Array.from(itemRows).map(row => {
+        const clientVal = row.querySelector('.item-client')?.value;
+        return {
+            service_type: row.querySelector('.item-type').value,
+            description: row.querySelector('.item-desc').value,
+            supplier_id: row.querySelector('.item-supplier').value ? parseInt(row.querySelector('.item-supplier').value) : null,
+            client_id: clientVal ? parseInt(clientVal) : null,
+            cost_price: parseCurrencyInput(row.querySelector('.item-cost').value),
+            sale_price: parseCurrencyInput(row.querySelector('.item-sale').value),
+            quantity: 1
+        };
+    });
+
+    items.forEach(it => {
+        if (it.client_id && !budgetSelectedClientIds.includes(it.client_id)) {
+            budgetSelectedClientIds.push(it.client_id);
+        }
+    });
 
     const payload = {
         client_ids: budgetSelectedClientIds,
@@ -1776,12 +1825,15 @@ let currentActiveBookingPaymentsId = null;
 let currentEditingPayment = null;
 let currentBookingDetailData = null;
 let currentBookingSupplierFilter = '';
+let currentBookingClientFilter = '';
 
 async function showBookingPaymentsHistory(bookingId) {
     try {
         currentActiveBookingPaymentsId = bookingId;
         const b = await apiFetch(`/api/bookings/${bookingId}`);
         currentBookingDetailData = b;
+        currentBookingSupplierFilter = '';
+        currentBookingClientFilter = '';
 
         document.getElementById('hist-modal-title').innerText = `Detalle de reserva - ${b.booking_number}`;
         const datesText = (b.start_date || b.end_date)
@@ -1804,6 +1856,33 @@ async function showBookingPaymentsHistory(bookingId) {
             }
         }
 
+        // Setup client dropdown
+        const clientSelectEl = document.getElementById('hist-modal-client-select');
+        if (clientSelectEl) {
+            const clientMap = new Map();
+            if (b.clients && b.clients.length) {
+                b.clients.forEach(c => clientMap.set(c.id, c.name));
+            }
+            if (b.client_ids && b.client_ids.length) {
+                b.client_ids.forEach(cid => {
+                    if (!clientMap.has(cid)) {
+                        const found = clientsCache.find(x => x.id === cid);
+                        clientMap.set(cid, found ? found.name : `Cliente #${cid}`);
+                    }
+                });
+            }
+            (b.items || []).forEach(it => {
+                if (it.client_id && it.client_name) clientMap.set(it.client_id, it.client_name);
+            });
+            (b.payments || []).forEach(p => {
+                if (p.client_id && p.client_name) clientMap.set(p.client_id, p.client_name);
+            });
+
+            const clientList = Array.from(clientMap.entries()).map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name, 'es'));
+            clientSelectEl.innerHTML = '<option value="">Todos los pasajeros / clientes</option>' + clientList.map(c => `<option value="${c.id}">${escapeProfitText(c.name)}</option>`).join('');
+            clientSelectEl.value = '';
+        }
+
         // Setup supplier dropdown
         const supplierSet = new Set();
         (b.items || []).forEach(it => { if (it.supplier_name && it.supplier_name.trim()) supplierSet.add(it.supplier_name.trim()); });
@@ -1813,14 +1892,64 @@ async function showBookingPaymentsHistory(bookingId) {
         const selectEl = document.getElementById('hist-modal-supplier-select');
         if (selectEl) {
             selectEl.innerHTML = '<option value="">Todos los proveedores</option>' + suppliers.map(s => `<option value="${escapeProfitText(s)}">${escapeProfitText(s)}</option>`).join('');
-            selectEl.value = currentBookingSupplierFilter || '';
+            selectEl.value = '';
         }
 
-        applyBookingSupplierFilter(currentBookingSupplierFilter || '');
+        applyBookingSupplierFilter('');
+        applyBookingClientFilter('');
 
         openModal('modal-booking-payments');
         if (window.lucide) lucide.createIcons();
     } catch (e) { console.error(e); }
+}
+
+function applyBookingClientFilter(clientId) {
+    currentBookingClientFilter = clientId ? Number(clientId) : '';
+    const b = currentBookingDetailData;
+    if (!b) return;
+
+    const selectEl = document.getElementById('hist-modal-client-select');
+    if (selectEl && selectEl.value !== (currentBookingClientFilter ? String(currentBookingClientFilter) : '')) {
+        selectEl.value = currentBookingClientFilter ? String(currentBookingClientFilter) : '';
+    }
+
+    const kpisPanel = document.getElementById('hist-modal-client-kpis-panel');
+    const clearBtn = document.getElementById('btn-clear-client-filter');
+
+    if (!currentBookingClientFilter) {
+        if (kpisPanel) kpisPanel.classList.add('hidden');
+        if (clearBtn) clearBtn.classList.add('hidden');
+    } else {
+        if (clearBtn) clearBtn.classList.remove('hidden');
+
+        // 1. Costo y Venta de los ítems asignados a este cliente
+        const matchingItems = (b.items || []).filter(item => Number(item.client_id) === currentBookingClientFilter);
+        const costoCliente = matchingItems.reduce((acc, item) => acc + (Number(item.cost_price || 0) * (Number(item.quantity) || 1)), 0);
+        const ventaCliente = matchingItems.reduce((acc, item) => acc + (Number(item.sale_price || 0) * (Number(item.quantity) || 1)), 0);
+
+        // 2. Pagos registrados por este cliente
+        const matchingPayments = (b.payments || []).filter(p => p.record_type === 'Cliente' && Number(p.client_id) === currentBookingClientFilter);
+        const totalPagosCliente = matchingPayments.reduce((acc, p) => acc + Math.abs(Number(p.amount || 0)), 0);
+        const saldoCliente = ventaCliente - totalPagosCliente;
+
+        if (kpisPanel) {
+            kpisPanel.classList.remove('hidden');
+            const costEl = document.getElementById('hist-modal-client-cost');
+            const saleEl = document.getElementById('hist-modal-client-sale');
+            const paidEl = document.getElementById('hist-modal-client-paid');
+            const balEl = document.getElementById('hist-modal-client-balance');
+            if (costEl) costEl.innerText = `${b.currency} $ ${costoCliente.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+            if (saleEl) saleEl.innerText = `${b.currency} $ ${ventaCliente.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+            if (paidEl) paidEl.innerText = `${b.currency} $ ${totalPagosCliente.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+            if (balEl) balEl.innerText = `${b.currency} $ ${saldoCliente.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+        }
+    }
+
+    renderBookingItemsAndPayments(b, currentBookingSupplierFilter, currentBookingClientFilter);
+}
+
+function clearBookingClientFilter() {
+    applyBookingClientFilter('');
 }
 
 function applyBookingSupplierFilter(supplierName) {
@@ -1864,22 +1993,31 @@ function applyBookingSupplierFilter(supplierName) {
         }
     }
 
-    renderBookingItemsAndPayments(b, currentBookingSupplierFilter);
+    renderBookingItemsAndPayments(b, currentBookingSupplierFilter, currentBookingClientFilter);
 }
 
 function clearBookingSupplierFilter() {
     applyBookingSupplierFilter('');
 }
 
-function renderBookingItemsAndPayments(b, filterSupplier) {
-    const filterLower = (filterSupplier || '').trim().toLowerCase();
+function renderBookingItemsAndPayments(b, filterSupplier = '', filterClient = '') {
+    const filterSuppLower = (filterSupplier || '').trim().toLowerCase();
+    const filterCliId = filterClient ? Number(filterClient) : null;
 
     // 1. Render Items
     const items = b.items || [];
-    const itemsToShow = filterLower ? items.filter(it => (it.supplier_name || '').trim().toLowerCase() === filterLower) : items;
+    let itemsToShow = items;
+    if (filterSuppLower) {
+        itemsToShow = itemsToShow.filter(it => (it.supplier_name || '').trim().toLowerCase() === filterSuppLower);
+    }
+    if (filterCliId) {
+        itemsToShow = itemsToShow.filter(it => Number(it.client_id) === filterCliId);
+    }
+
     const itemsCount = document.getElementById('hist-modal-items-count');
     if (itemsCount) {
-        itemsCount.innerText = filterLower ? `${itemsToShow.length} de ${items.length} ítems` : `${items.length} ${items.length === 1 ? 'ítem' : 'ítems'}`;
+        const hasFilter = filterSuppLower || filterCliId;
+        itemsCount.innerText = hasFilter ? `${itemsToShow.length} de ${items.length} ítems` : `${items.length} ${items.length === 1 ? 'ítem' : 'ítems'}`;
     }
 
     const itemsBody = document.getElementById('hist-modal-items-body');
@@ -1892,37 +2030,47 @@ function renderBookingItemsAndPayments(b, filterSupplier) {
             <tr class="border-b border-slate-100 hover:bg-slate-50 transition">
                 <td class="p-3">${escapeProfitText(item.service_type)}</td>
                 <td class="p-3 font-medium text-slate-800">${escapeProfitText(item.description)}</td>
+                <td class="p-3 font-semibold text-sky-800">${escapeProfitText(item.client_name || '-')}</td>
                 <td class="p-3 font-semibold text-blue-700">${escapeProfitText(item.supplier_name || '-')}</td>
                 <td class="p-3 text-right">${Number(item.quantity || 0)}</td>
                 <td class="p-3 text-right">${formatProfitAmount(b.currency, cost)}</td>
                 <td class="p-3 text-right">${formatProfitAmount(b.currency, sale)}</td>
                 <td class="p-3 text-right font-semibold ${saldo < 0 ? 'text-rose-700' : 'text-slate-800'}">${formatProfitAmount(b.currency, saldo)}</td>
             </tr>`;
-        }).join('') : `<tr><td colspan="7" class="p-4 text-center text-slate-400">${filterLower ? 'No hay ítems para este proveedor en esta reserva.' : 'No hay ítems de presupuesto asociados a esta reserva.'}</td></tr>`;
+        }).join('') : `<tr><td colspan="8" class="p-4 text-center text-slate-400">${(filterSuppLower || filterCliId) ? 'No hay ítems que coincidan con los filtros seleccionados.' : 'No hay ítems de presupuesto asociados a esta reserva.'}</td></tr>`;
     }
 
     // 2. Render Payments
     const tbody = document.getElementById('hist-modal-payments-body');
     if (tbody) {
         const payments = b.payments || [];
-        // When filtered by supplier, only show supplier payments matching that supplier (do NOT show customer payments)
-        const paymentsToShow = filterLower ? payments.filter(p => p.record_type === 'Proveedor' && (p.supplier_name || '').trim().toLowerCase() === filterLower) : payments;
+        let paymentsToShow = payments;
+        if (filterSuppLower) {
+            paymentsToShow = paymentsToShow.filter(p => p.record_type === 'Proveedor' && (p.supplier_name || '').trim().toLowerCase() === filterSuppLower);
+        } else if (filterCliId) {
+            paymentsToShow = paymentsToShow.filter(p => p.record_type === 'Cliente' && Number(p.client_id) === filterCliId);
+        }
 
         if (!paymentsToShow.length) {
-            tbody.innerHTML = `<tr><td colspan="9" class="p-4 text-center text-slate-400">${filterLower ? 'No hay pagos vinculados a este proveedor en esta reserva' : 'No se han registrado pagos para esta reserva'}</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="10" class="p-4 text-center text-slate-400">${(filterSuppLower || filterCliId) ? 'No hay pagos vinculados a este filtro en esta reserva' : 'No se han registrado pagos para esta reserva'}</td></tr>`;
         } else {
             tbody.innerHTML = paymentsToShow.map(p => {
                 const timePart = p.created_at ? (p.created_at.includes(' ') ? p.created_at.split(' ')[1] : p.created_at) : '-';
                 const isSupplierExpense = p.record_type === 'Proveedor';
+                const partyBadge = isSupplierExpense
+                    ? `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-rose-100 text-rose-800">Prov: ${escapeProfitText(p.supplier_name || 'Proveedor')}</span>`
+                    : `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-sky-100 text-sky-800">${escapeProfitText(p.client_name || 'Cliente')}</span>`;
+
                 return `
                     <tr class="border-b border-slate-100 hover:bg-slate-50 transition text-xs">
                         <td class="p-3 font-bold text-slate-900">${p.payment_number}</td>
                         <td class="p-3 font-medium text-slate-800">${p.payment_date}</td>
                         <td class="p-3 text-slate-500 font-mono">${timePart}</td>
                         <td class="p-3 font-bold ${isSupplierExpense ? 'text-rose-700' : 'text-emerald-600'}">${b.currency} $ ${p.amount.toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
+                        <td class="p-3">${partyBadge}</td>
                         <td class="p-3 text-slate-700">${p.payment_method}</td>
                         <td class="p-3"><span class="px-2 py-0.5 rounded-full font-semibold ${p.payment_type === 'Total' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">${p.payment_type}</span></td>
-                        <td class="p-3 text-slate-500">${isSupplierExpense ? `Proveedor: ${escapeProfitText(p.supplier_name)}` : (p.reference_code || '-')} ${p.notes ? '<span class="block italic text-[11px] text-slate-400">'+p.notes+'</span>' : ''}</td>
+                        <td class="p-3 text-slate-500">${(p.reference_code || '-')} ${p.notes ? '<span class="block italic text-[11px] text-slate-400">'+p.notes+'</span>' : ''}</td>
                         <td class="p-3 text-slate-600 font-medium">${p.registered_by_user_name || 'Agente'}</td>
                         <td class="p-3 text-right space-x-1">
                             ${isSupplierExpense ? `

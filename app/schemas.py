@@ -76,6 +76,7 @@ class BudgetItemBase(BaseModel):
     service_type: str
     description: str
     supplier_id: Optional[int] = None
+    client_id: Optional[int] = None
     cost_price: float = 0.0
     sale_price: float = 0.0
     quantity: int = 1
@@ -88,6 +89,7 @@ class BudgetItemOut(BudgetItemBase):
     budget_id: int
     subtotal: float
     supplier_name: Optional[str] = None
+    client_name: Optional[str] = None
 
 # Budget Schemas
 class BudgetBase(BaseModel):

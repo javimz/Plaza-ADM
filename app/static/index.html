@@ -1052,7 +1052,7 @@
 
     <!-- MODAL PRESUPUESTO -->
     <div id="modal-budget" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
-        <div class="bg-white rounded-2xl max-w-4xl w-full p-6 space-y-6 shadow-2xl overflow-y-auto max-h-[90vh]">
+        <div class="bg-white rounded-2xl max-w-5xl w-full p-6 space-y-6 shadow-2xl overflow-y-auto max-h-[90vh]">
             <div class="flex items-center justify-between border-b border-slate-200 pb-4">
                 <h3 id="modal-budget-title" class="text-lg font-bold text-slate-900">Crear Presupuesto</h3>
                 <button onclick="closeModal('modal-budget')" class="text-slate-400 hover:text-slate-600 p-1"><i data-lucide="x" class="w-5 h-5"></i></button>
@@ -1129,10 +1129,22 @@
                 <!-- Budget Line Items -->
                 <div class="space-y-3 pt-4 border-t border-slate-200">
                     <div class="flex items-center justify-between">
-                        <h4 class="font-bold text-sm text-slate-900">Ítems / Servicios del Presupuesto</h4>
+                        <div>
+                            <h4 class="font-bold text-sm text-slate-900">Ítems / Servicios del Presupuesto</h4>
+                            <p class="text-xs text-slate-500">En reservas grupales, asigne cada costo/servicio a un pasajero específico</p>
+                        </div>
                         <button type="button" onclick="addBudgetItemRow()" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1">
                             <i data-lucide="plus" class="w-3.5 h-3.5"></i> Agregar Ítem
                         </button>
+                    </div>
+                    <div class="hidden md:grid md:grid-cols-[130px_1fr_160px_160px_110px_110px_36px] gap-2 px-2.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                        <div>Tipo</div>
+                        <div>Descripción</div>
+                        <div>Pasajero / Cliente</div>
+                        <div>Proveedor</div>
+                        <div class="text-right">Costo</div>
+                        <div class="text-right">Venta</div>
+                        <div></div>
                     </div>
                     <div id="budget-items-container" class="space-y-2">
                         <!-- Dynamic items -->
@@ -1602,34 +1614,79 @@
                     <span id="hist-modal-items-count" class="text-xs text-slate-500">0 ítems</span>
                 </div>
                 <div class="table-container rounded-xl border border-slate-200">
-                    <table class="w-full min-w-[780px] text-left text-xs text-slate-600">
+                    <table class="w-full min-w-[850px] text-left text-xs text-slate-600">
                         <thead class="bg-slate-50 text-slate-700 font-semibold">
-                            <tr><th class="p-3">Servicio</th><th class="p-3">Descripción</th><th class="p-3">Proveedor</th><th class="p-3 text-right">Cantidad</th><th class="p-3 text-right">Costo</th><th class="p-3 text-right">Venta</th><th class="p-3 text-right">Saldo</th></tr>
+                            <tr><th class="p-3">Servicio</th><th class="p-3">Descripción</th><th class="p-3">Pasajero / Cliente</th><th class="p-3">Proveedor</th><th class="p-3 text-right">Cantidad</th><th class="p-3 text-right">Costo</th><th class="p-3 text-right">Venta</th><th class="p-3 text-right">Saldo</th></tr>
                         </thead>
-                        <tbody id="hist-modal-items-body"><tr><td colspan="7" class="p-4 text-center text-slate-400">No hay ítems de presupuesto asociados.</td></tr></tbody>
+                        <tbody id="hist-modal-items-body"><tr><td colspan="8" class="p-4 text-center text-slate-400">No hay ítems de presupuesto asociados.</td></tr></tbody>
                     </table>
                 </div>
             </section>
 
-            <!-- FILTRO Y KPIS POR PROVEEDOR -->
+            <!-- FILTROS Y KPIS (PASAJERO / PROVEEDOR) -->
             <div class="bg-slate-50/80 border border-slate-200 rounded-2xl p-4 space-y-3">
-                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                    <div>
-                        <h5 class="text-xs font-bold text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
-                            <i data-lucide="filter" class="w-3.5 h-3.5 text-blue-600"></i> Filtrar por Proveedor
-                        </h5>
-                        <p class="text-[11px] text-slate-500">Seleccione un proveedor para calcular su Neto y Saldo en esta reserva</p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- Filtro por Pasajero/Cliente -->
+                    <div class="space-y-1.5">
+                        <div class="flex items-center justify-between">
+                            <label for="hist-modal-client-select" class="text-xs font-bold text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                                <i data-lucide="user" class="w-3.5 h-3.5 text-sky-600"></i> Filtrar por Pasajero / Cliente
+                            </label>
+                            <button type="button" onclick="clearBookingClientFilter()" id="btn-clear-client-filter" class="hidden px-2 py-0.5 text-[11px] font-semibold text-sky-700 hover:text-sky-900 bg-white border border-sky-200 rounded-lg transition">Limpiar</button>
+                        </div>
+                        <select id="hist-modal-client-select" onchange="applyBookingClientFilter(this.value)" class="w-full p-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-sky-500 text-slate-700">
+                            <option value="">Todos los pasajeros / clientes</option>
+                        </select>
                     </div>
-                    <div class="flex items-center gap-2 w-full sm:w-auto">
-                        <select id="hist-modal-supplier-select" onchange="applyBookingSupplierFilter(this.value)" class="w-full sm:w-64 p-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500 text-slate-700">
+
+                    <!-- Filtro por Proveedor -->
+                    <div class="space-y-1.5">
+                        <div class="flex items-center justify-between">
+                            <label for="hist-modal-supplier-select" class="text-xs font-bold text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                                <i data-lucide="filter" class="w-3.5 h-3.5 text-blue-600"></i> Filtrar por Proveedor
+                            </label>
+                            <button type="button" onclick="clearBookingSupplierFilter()" id="btn-clear-supplier-filter" class="hidden px-2 py-0.5 text-[11px] font-semibold text-slate-600 hover:text-slate-900 bg-white border border-slate-200 rounded-lg transition">Limpiar</button>
+                        </div>
+                        <select id="hist-modal-supplier-select" onchange="applyBookingSupplierFilter(this.value)" class="w-full p-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500 text-slate-700">
                             <option value="">Todos los proveedores</option>
                         </select>
-                        <button type="button" onclick="clearBookingSupplierFilter()" id="btn-clear-supplier-filter" class="hidden px-2.5 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-white border border-slate-200 rounded-xl transition">Limpiar</button>
                     </div>
                 </div>
 
-                <!-- KPIs dinámicos del proveedor -->
-                <div id="hist-modal-supplier-kpis-panel" class="hidden grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-slate-200">
+                <!-- KPIs dinámicos del Pasajero seleccionado -->
+                <div id="hist-modal-client-kpis-panel" class="hidden grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3 border-t border-slate-200">
+                    <div class="bg-white p-3 rounded-xl border border-sky-200 shadow-sm flex items-center justify-between">
+                        <div>
+                            <span class="text-[11px] font-bold text-sky-700 uppercase tracking-wide">Costo Pasajero</span>
+                            <p class="text-[10px] text-slate-500">Costo servicios</p>
+                        </div>
+                        <p class="text-base font-bold text-sky-900" id="hist-modal-client-cost">$0.00</p>
+                    </div>
+                    <div class="bg-white p-3 rounded-xl border border-indigo-200 shadow-sm flex items-center justify-between">
+                        <div>
+                            <span class="text-[11px] font-bold text-indigo-700 uppercase tracking-wide">Venta Pasajero</span>
+                            <p class="text-[10px] text-slate-500">Venta total</p>
+                        </div>
+                        <p class="text-base font-bold text-indigo-900" id="hist-modal-client-sale">$0.00</p>
+                    </div>
+                    <div class="bg-white p-3 rounded-xl border border-emerald-200 shadow-sm flex items-center justify-between">
+                        <div>
+                            <span class="text-[11px] font-bold text-emerald-700 uppercase tracking-wide">Pagos Pasajero</span>
+                            <p class="text-[10px] text-slate-500">Cobrado al cliente</p>
+                        </div>
+                        <p class="text-base font-bold text-emerald-900" id="hist-modal-client-paid">$0.00</p>
+                    </div>
+                    <div class="bg-white p-3 rounded-xl border border-amber-200 shadow-sm flex items-center justify-between">
+                        <div>
+                            <span class="text-[11px] font-bold text-amber-700 uppercase tracking-wide">Saldo Pasajero</span>
+                            <p class="text-[10px] text-slate-500">Pendiente de cobro</p>
+                        </div>
+                        <p class="text-base font-bold text-amber-900" id="hist-modal-client-balance">$0.00</p>
+                    </div>
+                </div>
+
+                <!-- KPIs dinámicos del Proveedor seleccionado -->
+                <div id="hist-modal-supplier-kpis-panel" class="hidden grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t border-slate-200">
                     <div class="bg-white p-3.5 rounded-xl border border-blue-200 shadow-sm flex items-center justify-between">
                         <div>
                             <span class="text-[11px] font-bold text-blue-700 uppercase tracking-wide">Neto Proveedor</span>
@@ -1663,6 +1720,7 @@
                             <th class="p-3">Fecha de Pago</th>
                             <th class="p-3">Hora de Registro</th>
                             <th class="p-3">Monto</th>
+                            <th class="p-3">Pasajero / Destinatario</th>
                             <th class="p-3">Método</th>
                             <th class="p-3">Tipo</th>
                             <th class="p-3">Comprobante / Ref</th>
@@ -1671,7 +1729,7 @@
                         </tr>
                     </thead>
                     <tbody id="hist-modal-payments-body">
-                        <tr><td colspan="9" class="p-4 text-center text-slate-400">Sin pagos registrados</td></tr>
+                        <tr><td colspan="10" class="p-4 text-center text-slate-400">Sin pagos registrados</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -1954,6 +2012,6 @@
     </div>
 
     <!-- Application Script -->
-    <script src="static/js/app.js?v=20261014_01"></script>
+    <script src="static/js/app.js?v=20261016_01"></script>
 </body>
 </html>

@@ -592,24 +592,44 @@ class TestTravelAgencyApp(unittest.TestCase):
             "title": "Viaje grupal 2 clientes",
             "destination": "Bariloche",
             "status": "Borrador",
-            "items": [{
-                "service_type": "Hotel",
-                "description": "Hotel grupal",
-                "cost_price": 500,
-                "sale_price": 800,
-                "quantity": 1,
-            }],
+            "items": [
+                {
+                    "service_type": "Hotel",
+                    "description": "Hotel Pasajero 1",
+                    "client_id": 1,
+                    "cost_price": 500,
+                    "sale_price": 800,
+                    "quantity": 1,
+                },
+                {
+                    "service_type": "Vuelo",
+                    "description": "Vuelo Pasajero 2",
+                    "client_id": 2,
+                    "cost_price": 300,
+                    "sale_price": 500,
+                    "quantity": 1,
+                }
+            ],
         })
         self.assertEqual(created.status_code, 200, created.text)
         budget = created.json()
         self.assertCountEqual(budget["client_ids"], [1, 2])
         self.assertEqual(len(budget["client_names"]), 2)
+        self.assertEqual(budget["items"][0]["client_id"], 1)
+        self.assertTrue(budget["items"][0]["client_name"])
+        self.assertEqual(budget["items"][1]["client_id"], 2)
+        self.assertTrue(budget["items"][1]["client_name"])
 
         converted = self.client.post(f"/api/budgets/{budget['id']}/convert-to-booking")
         self.assertEqual(converted.status_code, 200, converted.text)
         booking = self.client.get(f"/api/bookings/{converted.json()['booking_id']}").json()
         self.assertCountEqual(booking["client_ids"], [1, 2])
         self.assertEqual(len(booking["client_names"]), 2)
+        self.assertEqual(booking["items"][0]["client_id"], 1)
+        self.assertTrue(booking["items"][0]["client_name"])
+        self.assertEqual(booking["items"][1]["client_id"], 2)
+        self.assertTrue(booking["items"][1]["client_name"])
+        self.assertTrue(len(booking["clients"]) == 2)
 
     def test_17_clear_activity_logs_by_date_range(self):
         # Verify audit logs can be fetched
