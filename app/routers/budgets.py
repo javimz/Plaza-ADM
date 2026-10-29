@@ -46,7 +46,7 @@ def get_budgets(include_converted: bool = False, current_user: dict = Depends(ge
     cursor = conn.cursor()
     cursor.execute("""
         SELECT b.*, c.name as client_name, u.full_name as user_name,
-               bk.id as booking_id, bk.booking_number
+               bk.id as booking_id, bk.booking_number, bk.status as booking_status
         FROM budgets b
         LEFT JOIN clients c ON b.client_id = c.id
         LEFT JOIN users u ON b.user_id = u.id
@@ -140,7 +140,7 @@ def get_budget(budget_id: int, current_user: dict = Depends(get_current_user)):
     cursor = conn.cursor()
     cursor.execute("""
         SELECT b.*, c.name as client_name, u.full_name as user_name,
-               bk.id as booking_id, bk.booking_number
+               bk.id as booking_id, bk.booking_number, bk.status as booking_status
         FROM budgets b
         LEFT JOIN clients c ON b.client_id = c.id
         LEFT JOIN users u ON b.user_id = u.id

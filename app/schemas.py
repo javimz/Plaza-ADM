@@ -113,6 +113,7 @@ class BudgetOut(BudgetBase):
     budget_number: str
     booking_id: Optional[int] = None
     booking_number: Optional[str] = None
+    booking_status: Optional[str] = None
     seller_ids: List[int] = []
     seller_names: List[str] = []
     client_ids: List[int] = []

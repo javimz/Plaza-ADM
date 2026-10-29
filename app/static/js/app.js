@@ -1568,7 +1568,7 @@ Egresos ARS: ${formatProfitAmount('ARS', expArs)}`;
 async function loadBudgets() {
     try {
         const rawBudgets = await apiFetch('/api/budgets');
-        const budgets = (rawBudgets || []).filter(b => b.status !== 'Convertido' && (!b.booking_id || b.booking_status === 'En presupuesto'));
+        const budgets = (rawBudgets || []).filter(b => b.status !== 'Convertido');
         const tbody = document.getElementById('budgets-table-body');
         if (budgets.length === 0) {
             tbody.innerHTML = `<tr><td colspan="7" class="p-4 text-center text-slate-400">No hay presupuestos activos registrados</td></tr>`;
