@@ -572,7 +572,10 @@ class TestTravelAgencyApp(unittest.TestCase):
         self.assertEqual(login.status_code, 200, login.text)
         agent_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
 
-        visible_budgets = self.client.get("/api/budgets", headers=agent_headers).json()
+        visible_budgets_default = self.client.get("/api/budgets", headers=agent_headers).json()
+        self.assertNotIn(own_budget["id"], [item["id"] for item in visible_budgets_default])
+
+        visible_budgets = self.client.get("/api/budgets?include_converted=true", headers=agent_headers).json()
         self.assertIn(own_budget["id"], [item["id"] for item in visible_budgets])
         self.assertNotIn(other_budget["id"], [item["id"] for item in visible_budgets])
         self.assertEqual(self.client.get(f"/api/budgets/{other_budget['id']}", headers=agent_headers).status_code, 404)
@@ -1050,8 +1053,8 @@ class TestTravelAgencyApp(unittest.TestCase):
         self.assertEqual(created.status_code, 200)
         budget_id = created.json()["id"]
 
-        # Before conversion, visible in both default and exclude_converted
-        active_budgets = self.client.get("/api/budgets?exclude_converted=true").json()
+        # Before conversion, visible in default /api/budgets
+        active_budgets = self.client.get("/api/budgets").json()
         self.assertIn(budget_id, [b["id"] for b in active_budgets])
 
         # Convert to booking
@@ -1059,8 +1062,8 @@ class TestTravelAgencyApp(unittest.TestCase):
         self.assertEqual(conv.status_code, 200)
         booking_id = conv.json()["booking_id"]
 
-        # After conversion, NOT visible with exclude_converted=true
-        active_budgets_after = self.client.get("/api/budgets?exclude_converted=true").json()
+        # After conversion, NOT visible in default /api/budgets
+        active_budgets_after = self.client.get("/api/budgets").json()
         self.assertNotIn(budget_id, [b["id"] for b in active_budgets_after])
 
         # Revert booking back to budget
@@ -1068,7 +1071,7 @@ class TestTravelAgencyApp(unittest.TestCase):
         self.assertEqual(revert_res.status_code, 200)
 
         # Now reappears in active budgets
-        reappeared_budgets = self.client.get("/api/budgets?exclude_converted=true").json()
+        reappeared_budgets = self.client.get("/api/budgets").json()
         self.assertIn(budget_id, [b["id"] for b in reappeared_budgets])
 
     def test_23_payment_generation_after_deletion_and_client_fallback(self):

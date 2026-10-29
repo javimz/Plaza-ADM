@@ -41,7 +41,7 @@ def generate_budget_number(conn):
     return candidate
 
 @router.get("", response_model=List[BudgetOut])
-def get_budgets(exclude_converted: bool = False, current_user: dict = Depends(get_current_user)):
+def get_budgets(include_converted: bool = False, current_user: dict = Depends(get_current_user)):
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
@@ -56,14 +56,14 @@ def get_budgets(exclude_converted: bool = False, current_user: dict = Depends(ge
         WHERE (? != 'agente' OR EXISTS (
             SELECT 1 FROM budget_sellers bs WHERE bs.budget_id = b.id AND bs.user_id = ?
         ))
-          AND (? = 0 OR (
+          AND (? = 1 OR (
               b.status != 'Convertido'
               AND NOT EXISTS (
                   SELECT 1 FROM bookings bk_active WHERE bk_active.budget_id = b.id AND bk_active.status != 'En presupuesto'
               )
           ))
         ORDER BY b.id DESC;
-    """, (current_user.get("role"), current_user.get("id"), 1 if exclude_converted else 0))
+    """, (current_user.get("role"), current_user.get("id"), 1 if include_converted else 0))
     budgets = cursor.fetchall()
     if not budgets:
         conn.close()
