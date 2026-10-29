@@ -35,7 +35,7 @@ app.include_router(notifications.router)
 async def audit_api_changes(request: Request, call_next):
     method = request.method.upper()
     path = request.url.path
-    monitored_methods = {"GET", "POST", "PUT", "PATCH", "DELETE"}
+    monitored_methods = {"POST", "PUT", "PATCH", "DELETE"}
     excluded_paths = {"/api/users/login", "/api/users/logout"}
 
     if (not path.startswith("/api/") or method not in monitored_methods

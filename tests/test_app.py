@@ -1033,6 +1033,97 @@ class TestTravelAgencyApp(unittest.TestCase):
         self.assertEqual(supp_pay["item_description"], "Hotel Caribe 4 Noches")
         self.assertTrue(supp_pay["client_name"])
 
+    def test_22_budgets_in_reservation_hidden_and_reappear_on_revert(self):
+        created = self.client.post("/api/budgets", json={
+            "client_id": 1,
+            "title": "Presupuesto Ocultable",
+            "destination": "Bariloche",
+            "currency": "USD",
+            "items": [{
+                "service_type": "Excursion",
+                "description": "Circuito Chico",
+                "cost_price": 100,
+                "sale_price": 180,
+                "quantity": 1,
+            }],
+        })
+        self.assertEqual(created.status_code, 200)
+        budget_id = created.json()["id"]
+
+        # Before conversion, visible in both default and exclude_converted
+        active_budgets = self.client.get("/api/budgets?exclude_converted=true").json()
+        self.assertIn(budget_id, [b["id"] for b in active_budgets])
+
+        # Convert to booking
+        conv = self.client.post(f"/api/budgets/{budget_id}/convert-to-booking")
+        self.assertEqual(conv.status_code, 200)
+        booking_id = conv.json()["booking_id"]
+
+        # After conversion, NOT visible with exclude_converted=true
+        active_budgets_after = self.client.get("/api/budgets?exclude_converted=true").json()
+        self.assertNotIn(budget_id, [b["id"] for b in active_budgets_after])
+
+        # Revert booking back to budget
+        revert_res = self.client.post(f"/api/bookings/{booking_id}/revert-to-budget")
+        self.assertEqual(revert_res.status_code, 200)
+
+        # Now reappears in active budgets
+        reappeared_budgets = self.client.get("/api/budgets?exclude_converted=true").json()
+        self.assertIn(budget_id, [b["id"] for b in reappeared_budgets])
+
+    def test_23_payment_generation_after_deletion_and_client_fallback(self):
+        # Create a booking
+        created = self.client.post("/api/budgets", json={
+            "client_id": 1,
+            "title": "Reserva de Prueba de Pago",
+            "destination": "Mendoza",
+            "currency": "USD",
+            "items": [{
+                "service_type": "Hotel",
+                "description": "Hotel Uco",
+                "cost_price": 300,
+                "sale_price": 500,
+                "quantity": 1,
+            }],
+        })
+        b_id = created.json()["id"]
+        conv = self.client.post(f"/api/budgets/{b_id}/convert-to-booking")
+        booking_id = conv.json()["booking_id"]
+
+        # Register first payment
+        p1 = self.client.post("/api/payments", json={
+            "booking_id": booking_id,
+            "amount": 50.0,
+            "payment_date": "2026-10-29",
+            "payment_method": "Transferencia",
+        })
+        self.assertEqual(p1.status_code, 200, p1.text)
+        p1_id = p1.json()["id"]
+
+        # Register second payment
+        p2 = self.client.post("/api/payments", json={
+            "booking_id": booking_id,
+            "amount": 50.0,
+            "payment_date": "2026-10-29",
+            "payment_method": "Transferencia",
+        })
+        self.assertEqual(p2.status_code, 200, p2.text)
+        p2_id = p2.json()["id"]
+
+        # Void / delete first payment (simulates hole in count)
+        del_res = self.client.delete(f"/api/payments/{p1_id}")
+        self.assertEqual(del_res.status_code, 200)
+
+        # Register third payment - must NOT crash or collide on payment_number UNIQUE constraint
+        p3 = self.client.post("/api/payments", json={
+            "booking_id": booking_id,
+            "amount": 50.0,
+            "payment_date": "2026-10-29",
+            "payment_method": "Transferencia",
+        })
+        self.assertEqual(p3.status_code, 200, p3.text)
+        self.assertNotEqual(p3.json()["payment_number"], p2.json()["payment_number"])
+
 if __name__ == "__main__":
     unittest.main()
 

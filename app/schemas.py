@@ -196,7 +196,7 @@ class PaymentOut(BaseModel):
     payment_number: str
     booking_id: int
     booking_number: Optional[str] = None
-    client_id: int
+    client_id: Optional[int] = None
     client_name: Optional[str] = None
     amount: float
     payment_date: str

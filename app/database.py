@@ -5,8 +5,13 @@ from app.auth import hash_password
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "travel_agency.db")
 
 def get_db_connection():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=30.0)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode = WAL;")
+    conn.execute("PRAGMA synchronous = NORMAL;")
+    conn.execute("PRAGMA foreign_keys = ON;")
+    conn.execute("PRAGMA temp_store = MEMORY;")
+    conn.execute("PRAGMA cache_size = -64000;")
     return conn
 
 def init_db():
@@ -314,6 +319,28 @@ def init_db():
         value TEXT NOT NULL
     );
     """)
+
+    # Performance Indexes
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_payments_booking_id ON payments(booking_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_payments_client_id ON payments(client_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_payments_payment_date ON payments(payment_date DESC);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_budget_items_budget_id ON budget_items(budget_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_budget_items_supplier_id ON budget_items(supplier_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_bookings_budget_id ON bookings(budget_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_bookings_status ON bookings(status);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_bookings_client_id ON bookings(client_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_bookings_user_id ON bookings(user_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_budgets_status ON budgets(status);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_budgets_client_id ON budgets(client_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_budgets_user_id ON budgets(user_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_booking_sellers_booking_id ON booking_sellers(booking_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_budget_sellers_budget_id ON budget_sellers(budget_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_booking_clients_booking_id ON booking_clients(booking_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_budget_clients_budget_id ON budget_clients(budget_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_supplier_payables_booking_id ON supplier_payables(booking_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_supplier_payables_budget_id ON supplier_payables(budget_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_supplier_payables_supplier_id ON supplier_payables(supplier_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_supplier_payments_payable_id ON supplier_payments(payable_id);")
 
     conn.commit()
 

@@ -19,9 +19,24 @@ router = APIRouter(prefix="/api/bookings", tags=["Bookings"])
 def generate_booking_number(conn):
     cursor = conn.cursor()
     year = datetime.now().year
-    cursor.execute("SELECT COUNT(*) FROM bookings;")
-    count = cursor.fetchone()[0] + 1
-    return f"RES-{year}-{count:04d}"
+    cursor.execute("SELECT booking_number FROM bookings WHERE booking_number LIKE ?;", (f"RES-{year}-%",))
+    existing = set()
+    max_num = 0
+    for row in cursor.fetchall():
+        bnum = row[0]
+        existing.add(bnum)
+        try:
+            val = int(bnum.split("-")[-1])
+            if val > max_num:
+                max_num = val
+        except (ValueError, IndexError):
+            pass
+    next_num = max_num + 1
+    candidate = f"RES-{year}-{next_num:04d}"
+    while candidate in existing:
+        next_num += 1
+        candidate = f"RES-{year}-{next_num:04d}"
+    return candidate
 
 @router.get("", response_model=List[BookingOut])
 def get_bookings(current_user: dict = Depends(get_current_user)):
@@ -55,28 +70,55 @@ def get_bookings(current_user: dict = Depends(get_current_user)):
         ORDER BY bk.id DESC;
     """, (current_user.get("role"), current_user.get("id")))
     bookings = cursor.fetchall()
+    if not bookings:
+        conn.close()
+        return []
+
+    booking_ids = [b["id"] for b in bookings]
+    placeholders = ",".join("?" for _ in booking_ids)
+
+    # Batch load sellers
+    sellers_map = {bid: [] for bid in booking_ids}
+    cursor.execute(f"""
+        SELECT bs.booking_id, bs.user_id, u.full_name
+        FROM booking_sellers bs
+        JOIN users u ON u.id = bs.user_id
+        WHERE bs.booking_id IN ({placeholders})
+        ORDER BY u.full_name;
+    """, booking_ids)
+    for row in cursor.fetchall():
+        sellers_map[row["booking_id"]].append((row["user_id"], row["full_name"]))
+
+    # Batch load clients
+    clients_map = {bid: [] for bid in booking_ids}
+    cursor.execute(f"""
+        SELECT bc.booking_id, bc.client_id, c.name
+        FROM booking_clients bc
+        JOIN clients c ON c.id = bc.client_id
+        WHERE bc.booking_id IN ({placeholders})
+        ORDER BY c.name;
+    """, booking_ids)
+    for row in cursor.fetchall():
+        clients_map[row["booking_id"]].append((row["client_id"], row["name"]))
+
     result = []
     for row in bookings:
         booking = dict(row)
-        booking["seller_ids"] = get_seller_ids(cursor, "booking", booking["id"])
-        if booking["seller_ids"]:
-            placeholders = ",".join("?" for _ in booking["seller_ids"])
-            cursor.execute(f"SELECT full_name FROM users WHERE id IN ({placeholders}) ORDER BY full_name;", booking["seller_ids"])
-            booking["seller_names"] = [seller["full_name"] for seller in cursor.fetchall()]
-        else:
-            booking["seller_names"] = []
+        bid = booking["id"]
 
-        booking["client_ids"] = get_client_ids(cursor, "booking", booking["id"])
-        if not booking["client_ids"] and booking["client_id"]:
+        seller_pairs = sellers_map.get(bid, [])
+        booking["seller_ids"] = [p[0] for p in seller_pairs]
+        booking["seller_names"] = [p[1] for p in seller_pairs]
+
+        client_pairs = clients_map.get(bid, [])
+        if not client_pairs and booking["client_id"]:
             booking["client_ids"] = [booking["client_id"]]
-        if booking["client_ids"]:
-            c_placeholders = ",".join("?" for _ in booking["client_ids"])
-            cursor.execute(f"SELECT name FROM clients WHERE id IN ({c_placeholders}) ORDER BY name;", booking["client_ids"])
-            booking["client_names"] = [c_row["name"] for c_row in cursor.fetchall()]
+            booking["client_names"] = [booking["client_name"]] if booking["client_name"] else []
+        else:
+            booking["client_ids"] = [p[0] for p in client_pairs]
+            booking["client_names"] = [p[1] for p in client_pairs]
             if booking["client_names"]:
                 booking["client_name"] = ", ".join(booking["client_names"])
-        else:
-            booking["client_names"] = []
 
         result.append(booking)
     conn.close()

@@ -11,9 +11,24 @@ router = APIRouter(prefix="/api/payments", tags=["Payments"])
 def generate_payment_number(conn):
     cursor = conn.cursor()
     year = datetime.now().year
-    cursor.execute("SELECT COUNT(*) FROM payments;")
-    count = cursor.fetchone()[0] + 1
-    return f"PAG-{year}-{count:04d}"
+    cursor.execute("SELECT payment_number FROM payments WHERE payment_number LIKE ?;", (f"PAG-{year}-%",))
+    existing = set()
+    max_num = 0
+    for row in cursor.fetchall():
+        pnum = row[0]
+        existing.add(pnum)
+        try:
+            val = int(pnum.split("-")[-1])
+            if val > max_num:
+                max_num = val
+        except (ValueError, IndexError):
+            pass
+    next_num = max_num + 1
+    candidate = f"PAG-{year}-{next_num:04d}"
+    while candidate in existing:
+        next_num += 1
+        candidate = f"PAG-{year}-{next_num:04d}"
+    return candidate
 
 @router.get("")
 def get_payments(current_user: dict = Depends(get_current_user)):
@@ -103,27 +118,53 @@ def register_payment(payload: PaymentCreate, current_user: dict = Depends(get_cu
     payment_number = generate_payment_number(conn)
     user_id = current_user.get("id", 1)
     client_id = payload.client_id or booking["client_id"]
+    if not client_id:
+        cursor.execute("SELECT client_id FROM booking_clients WHERE booking_id = ? ORDER BY client_id LIMIT 1;", (payload.booking_id,))
+        bc_row = cursor.fetchone()
+        if bc_row and bc_row[0]:
+            client_id = bc_row[0]
+    if not client_id and booking["budget_id"]:
+        cursor.execute("SELECT client_id FROM budgets WHERE id = ?;", (booking["budget_id"],))
+        bgt_row = cursor.fetchone()
+        if bgt_row and bgt_row[0]:
+            client_id = bgt_row[0]
+    if not client_id:
+        cursor.execute("SELECT id FROM clients ORDER BY id LIMIT 1;")
+        c_first = cursor.fetchone()
+        if c_first:
+            client_id = c_first[0]
+        else:
+            conn.close()
+            raise HTTPException(status_code=400, detail="No se encontró un cliente asociado a esta reserva para registrar el pago.")
+
+    if not booking["client_id"] and client_id:
+        cursor.execute("UPDATE bookings SET client_id = ? WHERE id = ? AND client_id IS NULL;", (client_id, payload.booking_id))
 
     new_paid = booking["paid_amount"] + payload.amount
     new_balance = max(0.0, booking["total_amount"] - new_paid)
     payment_type = "Total" if new_balance <= 0.01 else "Parcial"
 
-    cursor.execute("""
-        INSERT INTO payments (payment_number, booking_id, client_id, amount, payment_date, payment_method, concept, payment_type, reference_code, notes, registered_by_user_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-    """, (
-        payment_number, payload.booking_id, client_id, payload.amount,
-        payload.payment_date, payload.payment_method, payload.concept or "", payment_type,
-        payload.reference_code or "", payload.notes or "", user_id
-    ))
-    payment_id = cursor.lastrowid
+    try:
+        cursor.execute("""
+            INSERT INTO payments (payment_number, booking_id, client_id, amount, payment_date, payment_method, concept, payment_type, reference_code, notes, registered_by_user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+        """, (
+            payment_number, payload.booking_id, client_id, payload.amount,
+            payload.payment_date, payload.payment_method, payload.concept or "", payment_type,
+            payload.reference_code or "", payload.notes or "", user_id
+        ))
+        payment_id = cursor.lastrowid
 
-    # Update booking balances
-    cursor.execute("""
-        UPDATE bookings SET paid_amount = ?, balance_due = ? WHERE id = ?;
-    """, (new_paid, new_balance, payload.booking_id))
+        # Update booking balances
+        cursor.execute("""
+            UPDATE bookings SET paid_amount = ?, balance_due = ? WHERE id = ?;
+        """, (new_paid, new_balance, payload.booking_id))
 
-    conn.commit()
+        conn.commit()
+    except Exception as exc:
+        conn.rollback()
+        conn.close()
+        raise HTTPException(status_code=500, detail=f"Error al registrar pago en base de datos: {exc}")
 
     cursor.execute("""
         SELECT p.*, bk.booking_number, c.name as client_name, u.full_name as registered_by_user_name

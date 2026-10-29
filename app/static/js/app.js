@@ -188,12 +188,39 @@ async function apiFetch(url, method = 'GET', body = null) {
     try {
         const response = await fetch(fullUrl, config);
         if (!response.ok) {
-            const errData = await response.json().catch(() => ({}));
+            let errorMsg = '';
+            try {
+                const errData = await response.json();
+                if (typeof errData.detail === 'string') {
+                    errorMsg = errData.detail;
+                } else if (Array.isArray(errData.detail)) {
+                    errorMsg = errData.detail.map(e => e.msg || JSON.stringify(e)).join('; ');
+                } else if (errData.message) {
+                    errorMsg = errData.message;
+                } else if (errData.error) {
+                    errorMsg = errData.error;
+                }
+            } catch (e) {
+                try {
+                    const text = await response.text();
+                    if (text && text.length < 200 && !text.includes('<html')) {
+                        errorMsg = text;
+                    }
+                } catch(e2) {}
+            }
+
             if (response.status === 401 && token) {
                 logout('La sesión expiró. Inicie sesión nuevamente.');
                 throw new Error('Sesión expirada');
             }
-            throw new Error(errData.detail || 'Error en la solicitud');
+
+            if (!errorMsg) {
+                if (response.status === 504) errorMsg = 'El servidor tardó demasiado en responder (504 Gateway Timeout).';
+                else if (response.status === 502) errorMsg = 'Servidor temporalmente no disponible (502 Bad Gateway).';
+                else if (response.status === 500) errorMsg = 'Error interno en el servidor (500). Por favor intente nuevamente o contacte al administrador.';
+                else errorMsg = `Error en la solicitud (HTTP ${response.status})`;
+            }
+            throw new Error(errorMsg);
         }
         return await response.json();
     } catch (err) {
@@ -1540,10 +1567,11 @@ Egresos ARS: ${formatProfitAmount('ARS', expArs)}`;
 // PRESUPUESTOS
 async function loadBudgets() {
     try {
-        const budgets = await apiFetch('/api/budgets');
+        const rawBudgets = await apiFetch('/api/budgets?exclude_converted=true');
+        const budgets = (rawBudgets || []).filter(b => b.status !== 'Convertido');
         const tbody = document.getElementById('budgets-table-body');
         if (budgets.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="7" class="p-4 text-center text-slate-400">No hay presupuestos registrados</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="7" class="p-4 text-center text-slate-400">No hay presupuestos activos registrados</td></tr>`;
             applySectionSearch('view-budgets');
             return;
         }
@@ -2562,10 +2590,14 @@ async function openPaymentModal(bookingId, partyType = 'Cliente', targetItemId =
     const bClientIds = (booking.client_ids && booking.client_ids.length > 0) ? booking.client_ids : (booking.client_id ? [booking.client_id] : []);
     
     // Obtener detalles de los clientes de la reserva
-    const bookingClients = bClientIds.map(id => {
+    let bookingClients = bClientIds.map(id => {
         const found = clientsCache.find(c => c.id === id);
         return found || { id: id, name: `Cliente #${id}`, document_id: '' };
     });
+
+    if (bookingClients.length === 0 && clientsCache.length > 0) {
+        bookingClients = clientsCache;
+    }
 
     clientSelect.innerHTML = bookingClients.map(c => 
         `<option value="${c.id}">${escapeProfitText(c.name)}${c.document_id ? ` (${escapeProfitText(c.document_id)})` : ''}</option>`
@@ -2681,10 +2713,13 @@ async function savePayment(e) {
     }
 
     try {
-        const selectedClientId = parseInt(document.getElementById('payment-client-id').value);
+        const rawClientId = document.getElementById('payment-client-id')?.value;
+        const parsedClientId = rawClientId ? parseInt(rawClientId) : NaN;
+        const selectedClientId = (!isNaN(parsedClientId) && parsedClientId > 0) ? parsedClientId : null;
+        const finalClientId = selectedClientId || booking.client_id || (booking.client_ids && booking.client_ids[0]) || null;
         const payload = {
             booking_id: booking.id,
-            client_id: selectedClientId || booking.client_id,
+            client_id: finalClientId,
             amount,
             payment_date: paymentDate,
             payment_method: paymentMethod,

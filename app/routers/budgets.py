@@ -21,12 +21,27 @@ router = APIRouter(prefix="/api/budgets", tags=["Budgets"])
 def generate_budget_number(conn):
     cursor = conn.cursor()
     year = datetime.now().year
-    cursor.execute("SELECT COUNT(*) FROM budgets;")
-    count = cursor.fetchone()[0] + 1
-    return f"PRES-{year}-{count:04d}"
+    cursor.execute("SELECT budget_number FROM budgets WHERE budget_number LIKE ?;", (f"PRES-{year}-%",))
+    existing = set()
+    max_num = 0
+    for row in cursor.fetchall():
+        bnum = row[0]
+        existing.add(bnum)
+        try:
+            val = int(bnum.split("-")[-1])
+            if val > max_num:
+                max_num = val
+        except (ValueError, IndexError):
+            pass
+    next_num = max_num + 1
+    candidate = f"PRES-{year}-{next_num:04d}"
+    while candidate in existing:
+        next_num += 1
+        candidate = f"PRES-{year}-{next_num:04d}"
+    return candidate
 
 @router.get("", response_model=List[BudgetOut])
-def get_budgets(current_user: dict = Depends(get_current_user)):
+def get_budgets(exclude_converted: bool = False, current_user: dict = Depends(get_current_user)):
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
@@ -41,42 +56,79 @@ def get_budgets(current_user: dict = Depends(get_current_user)):
         WHERE (? != 'agente' OR EXISTS (
             SELECT 1 FROM budget_sellers bs WHERE bs.budget_id = b.id AND bs.user_id = ?
         ))
+          AND (? = 0 OR (
+              b.status != 'Convertido'
+              AND NOT EXISTS (
+                  SELECT 1 FROM bookings bk_active WHERE bk_active.budget_id = b.id AND bk_active.status != 'En presupuesto'
+              )
+          ))
         ORDER BY b.id DESC;
-    """, (current_user.get("role"), current_user.get("id")))
+    """, (current_user.get("role"), current_user.get("id"), 1 if exclude_converted else 0))
     budgets = cursor.fetchall()
+    if not budgets:
+        conn.close()
+        return []
+
+    budget_ids = [b["id"] for b in budgets]
+    placeholders = ",".join("?" for _ in budget_ids)
+
+    # Batch load sellers
+    sellers_map = {bid: [] for bid in budget_ids}
+    cursor.execute(f"""
+        SELECT bs.budget_id, bs.user_id, u.full_name
+        FROM budget_sellers bs
+        JOIN users u ON u.id = bs.user_id
+        WHERE bs.budget_id IN ({placeholders})
+        ORDER BY u.full_name;
+    """, budget_ids)
+    for row in cursor.fetchall():
+        sellers_map[row["budget_id"]].append((row["user_id"], row["full_name"]))
+
+    # Batch load clients
+    clients_map = {bid: [] for bid in budget_ids}
+    cursor.execute(f"""
+        SELECT bc.budget_id, bc.client_id, c.name
+        FROM budget_clients bc
+        JOIN clients c ON c.id = bc.client_id
+        WHERE bc.budget_id IN ({placeholders})
+        ORDER BY c.name;
+    """, budget_ids)
+    for row in cursor.fetchall():
+        clients_map[row["budget_id"]].append((row["client_id"], row["name"]))
+
+    # Batch load budget items
+    items_map = {bid: [] for bid in budget_ids}
+    cursor.execute(f"""
+        SELECT bi.*, s.name as supplier_name, c.name as client_name
+        FROM budget_items bi
+        LEFT JOIN suppliers s ON bi.supplier_id = s.id
+        LEFT JOIN clients c ON bi.client_id = c.id
+        WHERE bi.budget_id IN ({placeholders})
+        ORDER BY bi.id;
+    """, budget_ids)
+    for row in cursor.fetchall():
+        items_map[row["budget_id"]].append(dict(row))
 
     result = []
     for b in budgets:
         b_dict = dict(b)
-        b_dict["seller_ids"] = get_seller_ids(cursor, "budget", b["id"])
-        if b_dict["seller_ids"]:
-            placeholders = ",".join("?" for _ in b_dict["seller_ids"])
-            cursor.execute(f"SELECT full_name FROM users WHERE id IN ({placeholders}) ORDER BY full_name;", b_dict["seller_ids"])
-            b_dict["seller_names"] = [row["full_name"] for row in cursor.fetchall()]
-        else:
-            b_dict["seller_names"] = []
+        bid = b["id"]
 
-        b_dict["client_ids"] = get_client_ids(cursor, "budget", b["id"])
-        if not b_dict["client_ids"] and b["client_id"]:
+        seller_pairs = sellers_map.get(bid, [])
+        b_dict["seller_ids"] = [p[0] for p in seller_pairs]
+        b_dict["seller_names"] = [p[1] for p in seller_pairs]
+
+        client_pairs = clients_map.get(bid, [])
+        if not client_pairs and b["client_id"]:
             b_dict["client_ids"] = [b["client_id"]]
-        if b_dict["client_ids"]:
-            c_placeholders = ",".join("?" for _ in b_dict["client_ids"])
-            cursor.execute(f"SELECT name FROM clients WHERE id IN ({c_placeholders}) ORDER BY name;", b_dict["client_ids"])
-            b_dict["client_names"] = [row["name"] for row in cursor.fetchall()]
+            b_dict["client_names"] = [b["client_name"]] if b["client_name"] else []
+        else:
+            b_dict["client_ids"] = [p[0] for p in client_pairs]
+            b_dict["client_names"] = [p[1] for p in client_pairs]
             if b_dict["client_names"]:
                 b_dict["client_name"] = ", ".join(b_dict["client_names"])
-        else:
-            b_dict["client_names"] = []
 
-        cursor.execute("""
-            SELECT bi.*, s.name as supplier_name, c.name as client_name
-            FROM budget_items bi
-            LEFT JOIN suppliers s ON bi.supplier_id = s.id
-            LEFT JOIN clients c ON bi.client_id = c.id
-            WHERE bi.budget_id = ?;
-        """, (b["id"],))
-        items = cursor.fetchall()
-        b_dict["items"] = [dict(i) for i in items]
+        b_dict["items"] = items_map.get(bid, [])
         result.append(b_dict)
 
     conn.close()
