@@ -188,7 +188,7 @@ async def periodic_alerts_scheduler():
     """Background loop that automatically dispatches pending 7-day alerts at startup, 11:00 and 14:00."""
     await asyncio.sleep(5)  # Run immediately 5s after startup/restart
     try:
-        notifications.run_automated_alerts_check()
+        await asyncio.to_thread(notifications.run_automated_alerts_check)
     except Exception as e:
         print(f"Startup alerts check error: {e}")
 
@@ -202,7 +202,7 @@ async def periodic_alerts_scheduler():
                 current_slot = f"{now.strftime('%Y-%m-%d')}_{now.hour}"
                 if last_dispatched_slot != current_slot:
                     last_dispatched_slot = current_slot
-                    notifications.run_automated_alerts_check()
+                    await asyncio.to_thread(notifications.run_automated_alerts_check)
         except asyncio.CancelledError:
             break
         except Exception as e:

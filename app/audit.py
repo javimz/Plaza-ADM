@@ -1,6 +1,9 @@
+import logging
 from typing import Optional
 
 from app.database import get_db_connection
+
+logger = logging.getLogger("app.audit")
 
 
 def record_activity(
@@ -13,10 +16,13 @@ def record_activity(
     role: Optional[str] = None,
     details: str = "",
 ) -> None:
-    """Persist an activity event without storing request bodies or credentials."""
+    """Persist an activity event without storing request bodies or credentials.
+    Guaranteed not to raise an exception or crash caller in case of DB locks/errors.
+    """
     actor = user or {}
-    conn = get_db_connection()
+    conn = None
     try:
+        conn = get_db_connection()
         conn.execute(
             """
             INSERT INTO activity_logs
@@ -35,5 +41,11 @@ def record_activity(
             ),
         )
         conn.commit()
+    except Exception as e:
+        logger.warning(f"Error persisting activity log ({action}): {e}")
     finally:
-        conn.close()
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass

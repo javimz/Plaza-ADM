@@ -28,11 +28,23 @@ def get_current_user(authorization: Optional[str] = Header(None)):
 
 @router.post("/login", response_model=TokenResponse)
 def login(payload: LoginRequest):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM users WHERE username = ?;", (payload.username,))
-    user = cursor.fetchone()
-    conn.close()
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM users WHERE username = ?;", (payload.username,))
+        user = cursor.fetchone()
+    except Exception as e:
+        raise HTTPException(
+            status_code=503,
+            detail="El servicio está temporalmente ocupado. Por favor, reintente en unos instantes."
+        )
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
     if not user:
         record_activity("Inicio de sesión fallido", "POST", "/api/users/login", 400,

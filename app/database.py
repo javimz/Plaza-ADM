@@ -12,6 +12,7 @@ def get_db_connection():
     conn.execute("PRAGMA foreign_keys = ON;")
     conn.execute("PRAGMA temp_store = MEMORY;")
     conn.execute("PRAGMA cache_size = -64000;")
+    conn.execute("PRAGMA busy_timeout = 30000;")
     return conn
 
 def init_db():

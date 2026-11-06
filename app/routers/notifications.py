@@ -156,10 +156,12 @@ def send_single_push(subscription: Dict[str, Any], payload: Dict[str, Any], priv
         status_code = getattr(ex.response, "status_code", None) if hasattr(ex, "response") else None
         if status_code in (404, 410):
             try:
-                conn = get_db_connection()
-                conn.execute("DELETE FROM push_subscriptions WHERE endpoint = ?;", (subscription["endpoint"],))
-                conn.commit()
-                conn.close()
+                del_conn = get_db_connection()
+                try:
+                    del_conn.execute("DELETE FROM push_subscriptions WHERE endpoint = ?;", (subscription["endpoint"],))
+                    del_conn.commit()
+                finally:
+                    del_conn.close()
             except Exception:
                 pass
         logger.warning(f"WebPush failed for endpoint {subscription['endpoint'][:30]}...: {ex}")
@@ -169,15 +171,8 @@ def send_single_push(subscription: Dict[str, Any], payload: Dict[str, Any], priv
         return False
 
 
-def dispatch_alerts_to_all_subscribers(conn, trip_alerts: List[Dict[str, Any]], supplier_alerts: List[Dict[str, Any]]) -> int:
-    """Builds and sends push notifications for all active alerts to all subscribers."""
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, user_id, endpoint, p256dh, auth FROM push_subscriptions;")
-    subscribers = [dict(row) for row in cursor.fetchall()]
-    if not subscribers:
-        return 0
-
-    private_pem, _ = get_or_create_vapid_keys(conn)
+def _send_alerts_batch(subscribers: List[Dict[str, Any]], trip_alerts: List[Dict[str, Any]], supplier_alerts: List[Dict[str, Any]], private_pem: str) -> int:
+    """Builds and sends push notifications for all active alerts to all subscribers without holding DB connection."""
     sent_count = 0
 
     # 1. Upcoming trip departures
@@ -235,10 +230,26 @@ def dispatch_alerts_to_all_subscribers(conn, trip_alerts: List[Dict[str, Any]], 
     return sent_count
 
 
+def dispatch_alerts_to_all_subscribers(conn, trip_alerts: List[Dict[str, Any]], supplier_alerts: List[Dict[str, Any]]) -> int:
+    """Builds and sends push notifications for all active alerts to all subscribers."""
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, user_id, endpoint, p256dh, auth FROM push_subscriptions;")
+    subscribers = [dict(row) for row in cursor.fetchall()]
+    if not subscribers:
+        return 0
+
+    private_pem, _ = get_or_create_vapid_keys(conn)
+    return _send_alerts_batch(subscribers, trip_alerts, supplier_alerts, private_pem)
+
+
 def run_automated_alerts_check() -> int:
-    """Scans and dispatches push alerts to all subscribed devices."""
+    """Scans and dispatches push alerts to all subscribed devices without keeping DB open during network requests."""
     today = date.today()
     conn = get_db_connection()
+    subscribers = []
+    trip_alerts = []
+    supplier_alerts = []
+    private_pem = None
     try:
         cursor = conn.cursor()
         trip_alerts = get_upcoming_trip_alerts(cursor, today, window_days=7)
@@ -247,14 +258,29 @@ def run_automated_alerts_check() -> int:
         if total == 0:
             logger.info("Automated push alerts: 0 pending alerts for next 7 days.")
             return 0
-        sent = dispatch_alerts_to_all_subscribers(conn, trip_alerts, supplier_alerts)
-        logger.info(f"Automated push alerts dispatched: {sent} notifications sent for {total} alerts.")
-        return sent
+        cursor.execute("SELECT id, user_id, endpoint, p256dh, auth FROM push_subscriptions;")
+        subscribers = [dict(row) for row in cursor.fetchall()]
+        if not subscribers:
+            logger.info("Automated push alerts: No push subscribers registered.")
+            return 0
+        private_pem, _ = get_or_create_vapid_keys(conn)
     except Exception as e:
-        logger.error(f"Error in run_automated_alerts_check: {e}")
+        logger.error(f"Error querying automated alerts: {e}")
         return 0
     finally:
         conn.close()
+
+    if not private_pem or not subscribers:
+        return 0
+
+    total = len(trip_alerts) + len(supplier_alerts)
+    try:
+        sent = _send_alerts_batch(subscribers, trip_alerts, supplier_alerts, private_pem)
+        logger.info(f"Automated push alerts dispatched: {sent} notifications sent for {total} alerts.")
+        return sent
+    except Exception as e:
+        logger.error(f"Error dispatching automated alerts: {e}")
+        return 0
 
 
 @router.get("/vapid-public-key")

@@ -106,15 +106,24 @@ async function loginUser(event) {
             body: JSON.stringify({ username, password })
         });
 
-        let data = {};
+        let data = null;
         try {
             data = await response.json();
         } catch (e) {
-            throw new Error(`Error de servidor (${response.status}): no se pudo interpretar la respuesta.`);
+            // Non-JSON response (e.g. gateway error, plain text 500/503)
         }
 
         if (!response.ok) {
-            throw new Error(data.detail || 'Usuario o contraseña incorrectos');
+            if (data && data.detail) {
+                throw new Error(data.detail);
+            }
+            if (response.status === 503 || response.status === 504 || response.status === 502) {
+                throw new Error('El servidor está temporalmente ocupado o iniciando. Por favor, intente nuevamente en unos instantes.');
+            }
+            if (response.status === 500) {
+                throw new Error('El servidor tuvo una demora al procesar la solicitud (500). Por favor, intente nuevamente.');
+            }
+            throw new Error('Usuario o contraseña incorrectos');
         }
 
         authToken = data.access_token;
