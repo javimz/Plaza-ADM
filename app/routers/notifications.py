@@ -91,7 +91,8 @@ def get_upcoming_trip_alerts(cursor, today: date, window_days: int = 7) -> List[
 
 
 def get_supplier_payable_alerts(cursor, today: date, window_days: int = 7) -> List[Dict[str, Any]]:
-    """Fetches supplier payables due within window_days (or already overdue) with pending balance."""
+    """Fetches supplier payables due within window_days (or overdue in last 30 days) with pending balance."""
+    min_date = (today - timedelta(days=30)).isoformat()
     max_date = (today + timedelta(days=window_days)).isoformat()
 
     cursor.execute("""
@@ -106,9 +107,9 @@ def get_supplier_payable_alerts(cursor, today: date, window_days: int = 7) -> Li
         FROM supplier_payables sp
         JOIN suppliers s ON s.id = sp.supplier_id
         LEFT JOIN bookings bk ON bk.id = sp.booking_id
-        WHERE sp.due_date <= ?
+        WHERE sp.due_date >= ? AND sp.due_date <= ?
         ORDER BY sp.due_date ASC, sp.id DESC;
-    """, (max_date,))
+    """, (min_date, max_date))
 
     alerts = []
     for row in cursor.fetchall():
@@ -125,7 +126,7 @@ def get_supplier_payable_alerts(cursor, today: date, window_days: int = 7) -> Li
             item["is_overdue"] = days_left < 0
             item["type"] = "supplier_payable"
             alerts.append(item)
-    return alerts
+    return alerts[:25]
 
 
 def send_single_push(subscription: Dict[str, Any], payload: Dict[str, Any], private_pem: str) -> bool:
@@ -147,7 +148,7 @@ def send_single_push(subscription: Dict[str, Any], payload: Dict[str, Any], priv
             data=payload_json,
             vapid_private_key=vapid_obj,
             vapid_claims=vapid_claims,
-            timeout=10,
+            timeout=4,
             ttl=86400
         )
         return True

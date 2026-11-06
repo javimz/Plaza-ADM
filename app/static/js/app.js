@@ -1623,28 +1623,33 @@ async function loadBudgets() {
 }
 
 async function openNewBudgetModal() {
-    document.getElementById('modal-budget-title').innerText = 'Nuevo Presupuesto';
-    document.getElementById('budget-id').value = '';
-    document.getElementById('budget-associated-booking').value = 'Sin reserva asociada';
-    document.getElementById('form-budget').reset();
+    document.body.style.cursor = 'wait';
+    try {
+        document.getElementById('modal-budget-title').innerText = 'Nuevo Presupuesto';
+        document.getElementById('budget-id').value = '';
+        document.getElementById('budget-associated-booking').value = 'Sin reserva asociada';
+        document.getElementById('form-budget').reset();
 
-    if (!salespeopleCache.length) await loadSalespeopleCache();
-    if (!clientsCache.length) await loadClientsCache();
+        if (!salespeopleCache.length) await loadSalespeopleCache();
+        if (!clientsCache.length) await loadClientsCache();
 
-    budgetSelectedClientIds = [];
-    renderBudgetSelectedClients();
+        budgetSelectedClientIds = [];
+        renderBudgetSelectedClients();
 
-    budgetSelectedSellerIds = [];
-    renderBudgetSelectedSellers();
+        budgetSelectedSellerIds = [];
+        renderBudgetSelectedSellers();
 
-    hideBudgetDropdown('budget-client-dropdown');
-    hideBudgetDropdown('budget-seller-dropdown');
+        hideBudgetDropdown('budget-client-dropdown');
+        hideBudgetDropdown('budget-seller-dropdown');
 
-    const itemsContainer = document.getElementById('budget-items-container');
-    itemsContainer.innerHTML = '';
-    addBudgetItemRow(); // Add 1 default empty item row
+        const itemsContainer = document.getElementById('budget-items-container');
+        itemsContainer.innerHTML = '';
+        addBudgetItemRow(); // Add 1 default empty item row
 
-    openModal('modal-budget');
+        openModal('modal-budget');
+    } finally {
+        document.body.style.cursor = 'default';
+    }
 }
 
 function addBudgetItemRow(item = {}) {
@@ -1757,40 +1762,45 @@ async function saveBudget(e) {
 }
 
 async function editBudget(id) {
-    const b = await apiFetch(`/api/budgets/${id}`);
-    document.getElementById('modal-budget-title').innerText = `Editar Presupuesto ${b.budget_number}`;
-    document.getElementById('budget-id').value = b.id;
-    document.getElementById('budget-associated-booking').value = b.booking_number || 'Sin reserva asociada';
+    document.body.style.cursor = 'wait';
+    try {
+        const b = await apiFetch(`/api/budgets/${id}`);
+        document.getElementById('modal-budget-title').innerText = `Editar Presupuesto ${b.budget_number}`;
+        document.getElementById('budget-id').value = b.id;
+        document.getElementById('budget-associated-booking').value = b.booking_number || 'Sin reserva asociada';
 
-    if (!salespeopleCache.length) await loadSalespeopleCache();
-    if (!clientsCache.length) await loadClientsCache();
+        if (!salespeopleCache.length) await loadSalespeopleCache();
+        if (!clientsCache.length) await loadClientsCache();
 
-    budgetSelectedClientIds = (b.client_ids && b.client_ids.length > 0) ? [...b.client_ids] : (b.client_id ? [b.client_id] : []);
-    renderBudgetSelectedClients();
+        budgetSelectedClientIds = (b.client_ids && b.client_ids.length > 0) ? [...b.client_ids] : (b.client_id ? [b.client_id] : []);
+        renderBudgetSelectedClients();
 
-    budgetSelectedSellerIds = (b.seller_ids && b.seller_ids.length > 0) ? [...b.seller_ids] : [];
-    renderBudgetSelectedSellers();
+        budgetSelectedSellerIds = (b.seller_ids && b.seller_ids.length > 0) ? [...b.seller_ids] : [];
+        renderBudgetSelectedSellers();
 
-    hideBudgetDropdown('budget-client-dropdown');
-    hideBudgetDropdown('budget-seller-dropdown');
+        hideBudgetDropdown('budget-client-dropdown');
+        hideBudgetDropdown('budget-seller-dropdown');
 
-    document.getElementById('budget-title-input').value = b.title;
-    document.getElementById('budget-destination').value = b.destination;
-    document.getElementById('budget-start-date').value = b.start_date || '';
-    document.getElementById('budget-end-date').value = b.end_date || '';
-    document.getElementById('budget-currency').value = b.currency;
-    document.getElementById('budget-status').value = b.status;
-    document.getElementById('budget-notes').value = b.notes || '';
+        document.getElementById('budget-title-input').value = b.title;
+        document.getElementById('budget-destination').value = b.destination;
+        document.getElementById('budget-start-date').value = b.start_date || '';
+        document.getElementById('budget-end-date').value = b.end_date || '';
+        document.getElementById('budget-currency').value = b.currency;
+        document.getElementById('budget-status').value = b.status;
+        document.getElementById('budget-notes').value = b.notes || '';
 
-    const itemsContainer = document.getElementById('budget-items-container');
-    itemsContainer.innerHTML = '';
-    if (b.items && b.items.length > 0) {
-        b.items.forEach(item => addBudgetItemRow(item));
-    } else {
-        addBudgetItemRow();
+        const itemsContainer = document.getElementById('budget-items-container');
+        itemsContainer.innerHTML = '';
+        if (b.items && b.items.length > 0) {
+            b.items.forEach(item => addBudgetItemRow(item));
+        } else {
+            addBudgetItemRow();
+        }
+
+        openModal('modal-budget');
+    } finally {
+        document.body.style.cursor = 'default';
     }
-
-    openModal('modal-budget');
 }
 
 async function convertToBooking(budgetId) {

@@ -137,60 +137,60 @@ def get_budgets(include_converted: bool = False, current_user: dict = Depends(ge
 @router.get("/{budget_id}", response_model=BudgetOut)
 def get_budget(budget_id: int, current_user: dict = Depends(get_current_user)):
     conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT b.*, c.name as client_name, u.full_name as user_name,
-               bk.id as booking_id, bk.booking_number, bk.status as booking_status
-        FROM budgets b
-        LEFT JOIN clients c ON b.client_id = c.id
-        LEFT JOIN users u ON b.user_id = u.id
-        LEFT JOIN bookings bk ON bk.id = (
-            SELECT id FROM bookings WHERE budget_id = b.id ORDER BY id DESC LIMIT 1
-        )
-        WHERE b.id = ?;
-    """, (budget_id,))
-    b = cursor.fetchone()
-    if not b:
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT b.*, c.name as client_name, u.full_name as user_name,
+                   bk.id as booking_id, bk.booking_number, bk.status as booking_status
+            FROM budgets b
+            LEFT JOIN clients c ON b.client_id = c.id
+            LEFT JOIN users u ON b.user_id = u.id
+            LEFT JOIN bookings bk ON bk.id = (
+                SELECT id FROM bookings WHERE budget_id = b.id ORDER BY id DESC LIMIT 1
+            )
+            WHERE b.id = ?;
+        """, (budget_id,))
+        b = cursor.fetchone()
+        if not b:
+            raise HTTPException(status_code=404, detail="Presupuesto no encontrado")
+        require_sales_assignment(cursor, "budget", budget_id, current_user)
+
+        b_dict = dict(b)
+        b_dict["seller_ids"] = get_seller_ids(cursor, "budget", budget_id)
+        if b_dict["seller_ids"]:
+            placeholders = ",".join("?" for _ in b_dict["seller_ids"])
+            cursor.execute(f"SELECT full_name FROM users WHERE id IN ({placeholders}) ORDER BY full_name;", b_dict["seller_ids"])
+            b_dict["seller_names"] = [row["full_name"] for row in cursor.fetchall()]
+        else:
+            b_dict["seller_names"] = []
+
+        b_dict["client_ids"] = get_client_ids(cursor, "budget", budget_id)
+        if not b_dict["client_ids"] and b["client_id"]:
+            b_dict["client_ids"] = [b["client_id"]]
+        if b_dict["client_ids"]:
+            c_placeholders = ",".join("?" for _ in b_dict["client_ids"])
+            cursor.execute(f"SELECT id, name FROM clients WHERE id IN ({c_placeholders}) ORDER BY name;", b_dict["client_ids"])
+            c_rows = cursor.fetchall()
+            b_dict["clients"] = [{"id": row["id"], "name": row["name"]} for row in c_rows]
+            b_dict["client_names"] = [row["name"] for row in c_rows]
+            if b_dict["client_names"]:
+                b_dict["client_name"] = ", ".join(b_dict["client_names"])
+        else:
+            b_dict["clients"] = []
+            b_dict["client_names"] = []
+
+        cursor.execute("""
+            SELECT bi.*, s.name as supplier_name, c.name as client_name
+            FROM budget_items bi
+            LEFT JOIN suppliers s ON bi.supplier_id = s.id
+            LEFT JOIN clients c ON bi.client_id = c.id
+            WHERE bi.budget_id = ?;
+        """, (budget_id,))
+        items = cursor.fetchall()
+        b_dict["items"] = [dict(i) for i in items]
+        return b_dict
+    finally:
         conn.close()
-        raise HTTPException(status_code=404, detail="Presupuesto no encontrado")
-    require_sales_assignment(cursor, "budget", budget_id, current_user)
-
-    b_dict = dict(b)
-    b_dict["seller_ids"] = get_seller_ids(cursor, "budget", budget_id)
-    if b_dict["seller_ids"]:
-        placeholders = ",".join("?" for _ in b_dict["seller_ids"])
-        cursor.execute(f"SELECT full_name FROM users WHERE id IN ({placeholders}) ORDER BY full_name;", b_dict["seller_ids"])
-        b_dict["seller_names"] = [row["full_name"] for row in cursor.fetchall()]
-    else:
-        b_dict["seller_names"] = []
-
-    b_dict["client_ids"] = get_client_ids(cursor, "budget", budget_id)
-    if not b_dict["client_ids"] and b["client_id"]:
-        b_dict["client_ids"] = [b["client_id"]]
-    if b_dict["client_ids"]:
-        c_placeholders = ",".join("?" for _ in b_dict["client_ids"])
-        cursor.execute(f"SELECT id, name FROM clients WHERE id IN ({c_placeholders}) ORDER BY name;", b_dict["client_ids"])
-        c_rows = cursor.fetchall()
-        b_dict["clients"] = [{"id": row["id"], "name": row["name"]} for row in c_rows]
-        b_dict["client_names"] = [row["name"] for row in c_rows]
-        if b_dict["client_names"]:
-            b_dict["client_name"] = ", ".join(b_dict["client_names"])
-    else:
-        b_dict["clients"] = []
-        b_dict["client_names"] = []
-
-    cursor.execute("""
-        SELECT bi.*, s.name as supplier_name, c.name as client_name
-        FROM budget_items bi
-        LEFT JOIN suppliers s ON bi.supplier_id = s.id
-        LEFT JOIN clients c ON bi.client_id = c.id
-        WHERE bi.budget_id = ?;
-    """, (budget_id,))
-    items = cursor.fetchall()
-    b_dict["items"] = [dict(i) for i in items]
-
-    conn.close()
-    return b_dict
 
 def _convert_budget_to_booking_internal(cursor, budget_id: int, current_user: dict):
     cursor.execute("SELECT * FROM budgets WHERE id = ?;", (budget_id,))

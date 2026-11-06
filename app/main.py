@@ -185,13 +185,7 @@ from datetime import datetime
 
 
 async def periodic_alerts_scheduler():
-    """Background loop that automatically dispatches pending 7-day alerts at startup, 11:00 and 14:00."""
-    await asyncio.sleep(5)  # Run immediately 5s after startup/restart
-    try:
-        await asyncio.to_thread(notifications.run_automated_alerts_check)
-    except Exception as e:
-        print(f"Startup alerts check error: {e}")
-
+    """Background loop that automatically dispatches pending 7-day alerts at 11:00 and 14:00."""
     last_dispatched_slot = None
     while True:
         try:
