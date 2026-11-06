@@ -248,6 +248,76 @@ def init_db():
     if "client_id" not in budget_item_columns:
         cursor.execute("ALTER TABLE budget_items ADD COLUMN client_id INTEGER REFERENCES clients(id);")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_budget_items_client ON budget_items(client_id);")
+    if "booking_id" not in budget_item_columns:
+        cursor.execute("ALTER TABLE budget_items ADD COLUMN booking_id INTEGER REFERENCES bookings(id) ON DELETE CASCADE;")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_budget_items_booking_id ON budget_items(booking_id);")
+
+    cursor.execute("PRAGMA table_info(bookings);")
+    booking_columns = {row["name"] for row in cursor.fetchall()}
+    if "total_cost" not in booking_columns:
+        cursor.execute("ALTER TABLE bookings ADD COLUMN total_cost REAL NOT NULL DEFAULT 0.0;")
+    if "exchange_rate" not in booking_columns:
+        cursor.execute("ALTER TABLE bookings ADD COLUMN exchange_rate REAL DEFAULT 1.0;")
+
+    # Link existing budget_items to bookings
+    cursor.execute("""
+        UPDATE budget_items
+        SET booking_id = (SELECT id FROM bookings WHERE budget_id = budget_items.budget_id)
+        WHERE booking_id IS NULL AND budget_id IS NOT NULL
+          AND EXISTS (SELECT 1 FROM bookings WHERE budget_id = budget_items.budget_id);
+    """)
+
+    # Migrate any standalone budgets (without an active booking) to bookings with status 'Presupuesto'
+    cursor.execute("""
+        SELECT b.id, b.budget_number, b.client_id, b.user_id, b.title, b.destination,
+               b.start_date, b.end_date, b.currency, b.exchange_rate, b.status,
+               b.total_cost, b.total_amount, b.notes, b.created_at
+        FROM budgets b
+        WHERE NOT EXISTS (SELECT 1 FROM bookings bk WHERE bk.budget_id = b.id);
+    """)
+    unconverted_budgets = cursor.fetchall()
+    for ub in unconverted_budgets:
+        b_id = ub["id"]
+        raw_num = ub["budget_number"].replace("PRES-", "RES-")
+        cursor.execute("SELECT 1 FROM bookings WHERE booking_number = ?;", (raw_num,))
+        if cursor.fetchone():
+            raw_num = f"{raw_num}-B{b_id}"
+        
+        cursor.execute("""
+            INSERT INTO bookings (
+                booking_number, budget_id, client_id, user_id, title, destination,
+                start_date, end_date, currency, exchange_rate, status, total_cost,
+                total_amount, paid_amount, balance_due, notes, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Presupuesto', ?, ?, 0.0, ?, ?, ?);
+        """, (
+            raw_num, b_id, ub["client_id"], ub["user_id"], ub["title"], ub["destination"],
+            ub["start_date"], ub["end_date"], ub["currency"], ub["exchange_rate"] or 1.0,
+            ub["total_cost"] or 0.0, ub["total_amount"] or 0.0, ub["total_amount"] or 0.0,
+            ub["notes"], ub["created_at"]
+        ))
+        new_booking_id = cursor.lastrowid
+
+        cursor.execute("UPDATE budget_items SET booking_id = ? WHERE budget_id = ?;", (new_booking_id, b_id))
+        cursor.execute("""
+            INSERT OR IGNORE INTO booking_sellers (booking_id, user_id)
+            SELECT ?, user_id FROM budget_sellers WHERE budget_id = ?;
+        """, (new_booking_id, b_id))
+        cursor.execute("""
+            INSERT OR IGNORE INTO booking_clients (booking_id, client_id)
+            SELECT ?, client_id FROM budget_clients WHERE budget_id = ?;
+        """, (new_booking_id, b_id))
+        cursor.execute("UPDATE supplier_payables SET booking_id = ? WHERE budget_id = ? AND booking_id IS NULL;", (new_booking_id, b_id))
+
+    # Also update total_cost for any bookings missing it
+    cursor.execute("""
+        UPDATE bookings
+        SET total_cost = COALESCE((
+            SELECT SUM(bi.cost_price * bi.quantity)
+            FROM budget_items bi
+            WHERE bi.booking_id = bookings.id
+        ), 0.0)
+        WHERE total_cost = 0.0 OR total_cost IS NULL;
+    """)
 
     cursor.execute("PRAGMA table_info(supplier_payables);")
     payable_columns = {row["name"] for row in cursor.fetchall()}

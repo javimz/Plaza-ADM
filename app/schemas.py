@@ -135,13 +135,20 @@ class BookingBase(BaseModel):
     start_date: Optional[str] = ""
     end_date: Optional[str] = ""
     currency: str = "USD"
-    status: str = "Confirmada"
-    total_amount: float
+    exchange_rate: float = 1.0
+    status: str = "Presupuesto"
+    total_amount: float = 0.0
+    total_cost: float = 0.0
     notes: Optional[str] = ""
 
 class BookingCreate(BookingBase):
     budget_id: Optional[int] = None
     seller_ids: Optional[List[int]] = None
+    items: List[BudgetItemCreate] = []
+
+class BookingUpdate(BookingBase):
+    seller_ids: Optional[List[int]] = None
+    items: List[BudgetItemCreate] = []
 
 class BookingOut(BookingBase):
     id: int

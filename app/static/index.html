@@ -80,7 +80,7 @@
                                 if (avatarEl) avatarEl.innerText = (user.full_name || user.username || 'U').charAt(0).toUpperCase();
 
                                 if (typeof applyRolePermissions === 'function') applyRolePermissions();
-                                const initialTab = (window.ROLE_ALLOWED_TABS && window.ROLE_ALLOWED_TABS[user.role]) ? window.ROLE_ALLOWED_TABS[user.role][0] : 'budgets';
+                                const initialTab = (window.ROLE_ALLOWED_TABS && window.ROLE_ALLOWED_TABS[user.role]) ? window.ROLE_ALLOWED_TABS[user.role][0] : 'bookings';
                                 if (typeof switchTab === 'function') switchTab(initialTab);
                                 if (typeof loadClientsCache === 'function') loadClientsCache();
                                 if (typeof loadSuppliersCache === 'function') loadSuppliersCache();
@@ -274,10 +274,6 @@
         <nav class="flex-1 p-3 space-y-1 overflow-y-auto">
             <button onclick="switchTab('dashboard')" id="nav-dashboard" class="w-full flex items-center gap-3 px-3.5 py-2.5 text-sm font-semibold rounded-xl text-slate-300 hover:bg-slate-800/80 hover:text-white transition">
                 <i data-lucide="layout-dashboard" class="w-5 h-5"></i> Dashboard
-            </button>
-
-            <button onclick="switchTab('budgets')" id="nav-budgets" class="w-full flex items-center gap-3 px-3.5 py-2.5 text-sm font-semibold rounded-xl text-slate-300 hover:bg-slate-800/80 hover:text-white transition">
-                <i data-lucide="file-text" class="w-5 h-5"></i> Presupuestos
             </button>
 
             <button onclick="switchTab('bookings')" id="nav-bookings" class="w-full flex items-center gap-3 px-3.5 py-2.5 text-sm font-semibold rounded-xl text-slate-300 hover:bg-slate-800/80 hover:text-white transition">
@@ -668,20 +664,36 @@
 
             <!-- RESERVAS Y PAGOS VIEW -->
             <section id="view-bookings" class="hidden space-y-6">
-                <div class="flex items-center justify-between">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div>
-                        <h3 class="text-xl font-bold text-slate-900">Expedientes de Viaje y Control de Pagos</h3>
-                        <p class="text-xs text-slate-500">Administre reservas de clientes, pagos parciales y saldos pendientes</p>
+                        <h3 class="text-xl font-bold text-slate-900">Gestión de Reservas y Pagos</h3>
+                        <p class="text-xs text-slate-500">Presupuestos, reservas confirmadas, cobros a clientes y egresos a proveedores</p>
                     </div>
-                    <button type="button" onclick="toggleSalesPayments()" class="bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold px-4 py-2.5 rounded-xl flex items-center gap-2 text-sm border border-blue-200 transition">
-                        <i data-lucide="receipt-text" class="w-4 h-4"></i> Ver todos los pagos
-                    </button>
+                    <div class="flex items-center gap-2">
+                        <button type="button" onclick="openNewBookingModal()" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2.5 rounded-xl flex items-center gap-2 text-sm shadow-md transition cursor-pointer">
+                            <i data-lucide="plus" class="w-4 h-4"></i> Nueva Reserva
+                        </button>
+                        <button type="button" onclick="toggleSalesPayments()" class="bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold px-4 py-2.5 rounded-xl flex items-center gap-2 text-sm border border-blue-200 transition cursor-pointer">
+                            <i data-lucide="receipt-text" class="w-4 h-4"></i> Ver todos los pagos
+                        </button>
+                    </div>
                 </div>
 
-                <label class="relative block max-w-md">
-                    <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
-                    <input type="search" oninput="filterSectionRows('view-bookings', this.value)" placeholder="Buscar reserva, cliente o pago..." aria-label="Buscar ventas y reservas" class="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500">
-                </label>
+                <!-- Status Filters & Search -->
+                <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                    <div class="flex flex-wrap items-center gap-2" id="bookings-status-filter-buttons">
+                        <button type="button" onclick="setBookingStatusFilter('all')" class="bk-filter-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-blue-600 text-white shadow-xs transition" data-status="all">Todas</button>
+                        <button type="button" onclick="setBookingStatusFilter('Presupuesto')" class="bk-filter-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition" data-status="Presupuesto">Presupuestos</button>
+                        <button type="button" onclick="setBookingStatusFilter('Confirmada')" class="bk-filter-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition" data-status="Confirmada">Confirmadas</button>
+                        <button type="button" onclick="setBookingStatusFilter('En Curso')" class="bk-filter-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition" data-status="En Curso">En Curso</button>
+                        <button type="button" onclick="setBookingStatusFilter('Cancelada')" class="bk-filter-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition" data-status="Cancelada">Canceladas</button>
+                    </div>
+
+                    <label class="relative block max-w-sm w-full">
+                        <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
+                        <input type="search" oninput="filterSectionRows('view-bookings', this.value)" placeholder="Buscar reserva, cliente, destino o estado..." aria-label="Buscar ventas y reservas" class="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500">
+                    </label>
+                </div>
 
                 <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                     <div class="table-container">
@@ -690,17 +702,19 @@
                                 <tr>
                                     <th class="p-4">Nº Reserva</th>
                                     <th class="p-4">Cliente</th>
-                                    <th class="p-4">Destino</th>
+                                    <th class="p-4">Destino / Título</th>
+                                    <th class="p-4">Fechas</th>
+                                    <th class="p-4">Estado</th>
                                     <th class="p-4">Monto Total</th>
                                     <th class="p-4">Cobrado</th>
-                                    <th class="p-4">Saldo Pendiente</th>
-                                    <th class="p-4">Costo</th>
-                                    <th class="p-4">Saldo costo</th>
+                                    <th class="p-4">Saldo Cliente</th>
+                                    <th class="p-4">Costo Total</th>
+                                    <th class="p-4">Saldo Costo</th>
                                     <th class="p-4 text-right">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody id="bookings-table-body">
-                                <tr><td colspan="9" class="p-4 text-center text-slate-400">Cargando reservas...</td></tr>
+                                <tr><td colspan="11" class="p-4 text-center text-slate-400">Cargando reservas...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -1059,18 +1073,22 @@
         </div>
     </main>
 
-    <!-- MODAL PRESUPUESTO -->
-    <div id="modal-budget" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <!-- MODAL RESERVA / PRESUPUESTO -->
+    <div id="modal-booking" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
         <div class="bg-white rounded-2xl max-w-5xl w-full p-6 space-y-6 shadow-2xl overflow-y-auto max-h-[90vh]">
             <div class="flex items-center justify-between border-b border-slate-200 pb-4">
-                <h3 id="modal-budget-title" class="text-lg font-bold text-slate-900">Crear Presupuesto</h3>
-                <button onclick="closeModal('modal-budget')" class="text-slate-400 hover:text-slate-600 p-1"><i data-lucide="x" class="w-5 h-5"></i></button>
+                <div>
+                    <h3 id="modal-booking-title" class="text-lg font-bold text-slate-900">Nueva Reserva</h3>
+                    <p class="text-xs text-slate-500">Expedientes de viaje, cotizaciones previas, servicios y valores comerciales</p>
+                </div>
+                <button onclick="closeModal('modal-booking')" class="text-slate-400 hover:text-slate-600 p-1"><i data-lucide="x" class="w-5 h-5"></i></button>
             </div>
-            <form id="form-budget" onsubmit="saveBudget(event)" class="space-y-4">
+            <form id="form-booking" onsubmit="saveBooking(event)" class="space-y-4">
+                <input type="hidden" id="booking-id">
                 <input type="hidden" id="budget-id">
                 <!-- CLIENTES ASIGNADOS -->
                 <div class="col-span-1 md:col-span-2 space-y-2 border-b border-slate-100 pb-3">
-                    <label class="block text-xs font-bold text-sky-800 uppercase tracking-wide">Clientes del Expediente / Presupuesto *</label>
+                    <label class="block text-xs font-bold text-sky-800 uppercase tracking-wide">Clientes del Expediente / Reserva *</label>
                     <div class="relative">
                         <input type="text" id="budget-client-search" placeholder="Ingrese un Criterio de Búsqueda y presione ENTER. (Mínimo 3 Caracteres)" autocomplete="off" class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none">
                         <div id="budget-client-dropdown" class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-20 max-h-48 overflow-y-auto hidden divide-y divide-slate-100"></div>
@@ -1110,16 +1128,12 @@
                     <div>
                         <label class="block text-xs font-semibold text-slate-700 mb-1">Estado</label>
                         <select id="budget-status" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                            <option value="Borrador">Borrador</option>
-                            <option value="Enviado">Enviado al Cliente</option>
-                            <option value="Aprobado">Aprobado</option>
-                            <option value="Rechazado">Rechazado</option>
-                            <option value="Convertido">Convertido a Reserva</option>
+                            <option value="Presupuesto">Presupuesto (Cotización)</option>
+                            <option value="Confirmada" selected>Confirmada (Reserva Activa)</option>
+                            <option value="En Curso">En Curso</option>
+                            <option value="Completada">Completada</option>
+                            <option value="Cancelada">Cancelada</option>
                         </select>
-                    </div>
-                    <div>
-                        <label for="budget-associated-booking" class="block text-xs font-semibold text-slate-500 mb-1">Reserva asociada</label>
-                        <input id="budget-associated-booking" readonly class="w-full rounded-xl border border-slate-200 bg-slate-100 p-2.5 text-sm text-slate-500">
                     </div>
                 </div>
 
@@ -1139,7 +1153,7 @@
                 <div class="space-y-3 pt-4 border-t border-slate-200">
                     <div class="flex items-center justify-between">
                         <div>
-                            <h4 class="font-bold text-sm text-slate-900">Ítems / Servicios del Presupuesto</h4>
+                            <h4 class="font-bold text-sm text-slate-900">Ítems / Servicios de la Reserva</h4>
                             <p class="text-xs text-slate-500">En reservas grupales, asigne cada costo/servicio a un pasajero específico</p>
                         </div>
                         <button type="button" onclick="addBudgetItemRow()" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1">
@@ -1166,8 +1180,8 @@
                 </div>
 
                 <div class="flex items-center justify-end gap-3 pt-4 border-t border-slate-200">
-                    <button type="button" onclick="closeModal('modal-budget')" class="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl">Cancelar</button>
-                    <button type="submit" class="px-5 py-2 text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md">Guardar Presupuesto</button>
+                    <button type="button" onclick="closeModal('modal-booking')" class="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl">Cancelar</button>
+                    <button type="submit" class="px-5 py-2 text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md">Guardar Reserva</button>
                 </div>
             </form>
         </div>
@@ -2036,6 +2050,6 @@
     </div>
 
     <!-- Application Script -->
-    <script src="static/js/app.js?v=20261106_02"></script>
+    <script src="static/js/app.js?v=20261106_03"></script>
 </body>
 </html>

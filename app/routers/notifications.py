@@ -68,7 +68,7 @@ def get_upcoming_trip_alerts(cursor, today: date, window_days: int = 7) -> List[
                c.name as client_name, c.phone as client_phone
         FROM bookings bk
         LEFT JOIN clients c ON bk.client_id = c.id
-        WHERE bk.status NOT IN ('Cancelada', 'En presupuesto')
+        WHERE bk.status NOT IN ('Cancelada', 'En presupuesto', 'Presupuesto')
           AND bk.start_date IS NOT NULL
           AND bk.start_date != ''
           AND bk.start_date >= ?

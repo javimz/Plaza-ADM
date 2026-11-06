@@ -1,8 +1,8 @@
 from fastapi import APIRouter, HTTPException, Depends
-from typing import List
+from typing import List, Optional
 from datetime import datetime
 from app.database import get_db_connection
-from app.schemas import BookingCreate, BookingOut
+from app.schemas import BookingCreate, BookingUpdate, BookingOut
 from app.routers.users import get_current_user
 from app.sales_assignments import (
     get_client_ids,
@@ -12,6 +12,7 @@ from app.sales_assignments import (
     set_client_ids,
     set_seller_ids,
     validate_client_ids,
+    validate_seller_ids,
 )
 
 router = APIRouter(prefix="/api/bookings", tags=["Bookings"])
@@ -39,90 +40,115 @@ def generate_booking_number(conn):
     return candidate
 
 @router.get("", response_model=List[BookingOut])
-def get_bookings(current_user: dict = Depends(get_current_user)):
+def get_bookings(status: Optional[str] = None, current_user: dict = Depends(get_current_user)):
     conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT bk.*, c.name as client_name, u.full_name as user_name,
-               b.budget_number, COALESCE(b.total_cost, 0) as total_cost,
-               COALESCE((
-                   SELECT SUM(spp.amount)
-                   FROM supplier_payables sp
-                   JOIN supplier_payments spp ON spp.payable_id = sp.id
-                   WHERE sp.booking_id = bk.id
-                      OR (sp.booking_id IS NULL AND sp.budget_id = bk.budget_id)
-               ), 0) as supplier_paid_amount,
-               COALESCE(b.total_cost, 0) - COALESCE((
-                   SELECT SUM(spp.amount)
-                   FROM supplier_payables sp
-                   JOIN supplier_payments spp ON spp.payable_id = sp.id
-                   WHERE sp.booking_id = bk.id
-                      OR (sp.booking_id IS NULL AND sp.budget_id = bk.budget_id)
-               ), 0) as cost_balance
-        FROM bookings bk
-        LEFT JOIN clients c ON bk.client_id = c.id
-        LEFT JOIN users u ON bk.user_id = u.id
-         LEFT JOIN budgets b ON b.id = bk.budget_id
-        WHERE bk.status != 'En presupuesto'
-          AND (? != 'agente' OR EXISTS (
-              SELECT 1 FROM booking_sellers bs WHERE bs.booking_id = bk.id AND bs.user_id = ?
-          ))
-        ORDER BY bk.id DESC;
-    """, (current_user.get("role"), current_user.get("id")))
-    bookings = cursor.fetchall()
-    if not bookings:
+    try:
+        cursor = conn.cursor()
+        status_filter = "AND bk.status = ?" if status else ""
+        query_params = [current_user.get("role"), current_user.get("id")]
+        if status:
+            query_params.append(status)
+
+        cursor.execute(f"""
+            SELECT bk.*, c.name as client_name, u.full_name as user_name,
+                   COALESCE(b.budget_number, '') as budget_number,
+                   COALESCE(NULLIF(bk.total_cost, 0), b.total_cost, 0) as total_cost,
+                   COALESCE((
+                       SELECT SUM(spp.amount)
+                       FROM supplier_payables sp
+                       JOIN supplier_payments spp ON spp.payable_id = sp.id
+                       WHERE sp.booking_id = bk.id
+                          OR (sp.booking_id IS NULL AND sp.budget_id = bk.budget_id)
+                   ), 0) as supplier_paid_amount,
+                   COALESCE(NULLIF(bk.total_cost, 0), b.total_cost, 0) - COALESCE((
+                       SELECT SUM(spp.amount)
+                       FROM supplier_payables sp
+                       JOIN supplier_payments spp ON spp.payable_id = sp.id
+                       WHERE sp.booking_id = bk.id
+                          OR (sp.booking_id IS NULL AND sp.budget_id = bk.budget_id)
+                   ), 0) as cost_balance
+            FROM bookings bk
+            LEFT JOIN clients c ON bk.client_id = c.id
+            LEFT JOIN users u ON bk.user_id = u.id
+            LEFT JOIN budgets b ON b.id = bk.budget_id
+            WHERE (? != 'agente' OR EXISTS (
+                SELECT 1 FROM booking_sellers bs WHERE bs.booking_id = bk.id AND bs.user_id = ?
+            ))
+            {status_filter}
+            ORDER BY bk.id DESC;
+        """, query_params)
+        bookings = cursor.fetchall()
+        if not bookings:
+            return []
+
+        booking_ids = [b["id"] for b in bookings]
+        placeholders = ",".join("?" for _ in booking_ids)
+
+        # Batch load sellers
+        sellers_map = {bid: [] for bid in booking_ids}
+        cursor.execute(f"""
+            SELECT bs.booking_id, bs.user_id, u.full_name
+            FROM booking_sellers bs
+            JOIN users u ON u.id = bs.user_id
+            WHERE bs.booking_id IN ({placeholders})
+            ORDER BY u.full_name;
+        """, booking_ids)
+        for row in cursor.fetchall():
+            sellers_map[row["booking_id"]].append((row["user_id"], row["full_name"]))
+
+        # Batch load clients
+        clients_map = {bid: [] for bid in booking_ids}
+        cursor.execute(f"""
+            SELECT bc.booking_id, bc.client_id, c.name
+            FROM booking_clients bc
+            JOIN clients c ON c.id = bc.client_id
+            WHERE bc.booking_id IN ({placeholders})
+            ORDER BY c.name;
+        """, booking_ids)
+        for row in cursor.fetchall():
+            clients_map[row["booking_id"]].append((row["client_id"], row["name"]))
+
+        result = []
+        for row in bookings:
+            booking = dict(row)
+            bid = booking["id"]
+
+            cost_val = float(booking.get("total_cost") or 0.0)
+            if cost_val == 0.0 and booking.get("budget_id"):
+                cursor.execute("SELECT total_cost FROM budgets WHERE id = ?;", (booking["budget_id"],))
+                b_cost = cursor.fetchone()
+                if b_cost and b_cost[0]:
+                    cost_val = float(b_cost[0])
+            if cost_val == 0.0:
+                cursor.execute("""
+                    SELECT SUM(cost_price * quantity)
+                    FROM budget_items
+                    WHERE booking_id = ? OR (booking_id IS NULL AND budget_id = ?);
+                """, (bid, booking.get("budget_id")))
+                bi_cost = cursor.fetchone()
+                if bi_cost and bi_cost[0]:
+                    cost_val = float(bi_cost[0])
+            booking["total_cost"] = cost_val
+            booking["cost_balance"] = cost_val - float(booking.get("supplier_paid_amount") or 0.0)
+
+            seller_pairs = sellers_map.get(bid, [])
+            booking["seller_ids"] = [p[0] for p in seller_pairs]
+            booking["seller_names"] = [p[1] for p in seller_pairs]
+
+            client_pairs = clients_map.get(bid, [])
+            if not client_pairs and booking["client_id"]:
+                booking["client_ids"] = [booking["client_id"]]
+                booking["client_names"] = [booking["client_name"]] if booking["client_name"] else []
+            else:
+                booking["client_ids"] = [p[0] for p in client_pairs]
+                booking["client_names"] = [p[1] for p in client_pairs]
+                if booking["client_names"]:
+                    booking["client_name"] = ", ".join(booking["client_names"])
+
+            result.append(booking)
+        return result
+    finally:
         conn.close()
-        return []
-
-    booking_ids = [b["id"] for b in bookings]
-    placeholders = ",".join("?" for _ in booking_ids)
-
-    # Batch load sellers
-    sellers_map = {bid: [] for bid in booking_ids}
-    cursor.execute(f"""
-        SELECT bs.booking_id, bs.user_id, u.full_name
-        FROM booking_sellers bs
-        JOIN users u ON u.id = bs.user_id
-        WHERE bs.booking_id IN ({placeholders})
-        ORDER BY u.full_name;
-    """, booking_ids)
-    for row in cursor.fetchall():
-        sellers_map[row["booking_id"]].append((row["user_id"], row["full_name"]))
-
-    # Batch load clients
-    clients_map = {bid: [] for bid in booking_ids}
-    cursor.execute(f"""
-        SELECT bc.booking_id, bc.client_id, c.name
-        FROM booking_clients bc
-        JOIN clients c ON c.id = bc.client_id
-        WHERE bc.booking_id IN ({placeholders})
-        ORDER BY c.name;
-    """, booking_ids)
-    for row in cursor.fetchall():
-        clients_map[row["booking_id"]].append((row["client_id"], row["name"]))
-
-    result = []
-    for row in bookings:
-        booking = dict(row)
-        bid = booking["id"]
-
-        seller_pairs = sellers_map.get(bid, [])
-        booking["seller_ids"] = [p[0] for p in seller_pairs]
-        booking["seller_names"] = [p[1] for p in seller_pairs]
-
-        client_pairs = clients_map.get(bid, [])
-        if not client_pairs and booking["client_id"]:
-            booking["client_ids"] = [booking["client_id"]]
-            booking["client_names"] = [booking["client_name"]] if booking["client_name"] else []
-        else:
-            booking["client_ids"] = [p[0] for p in client_pairs]
-            booking["client_names"] = [p[1] for p in client_pairs]
-            if booking["client_names"]:
-                booking["client_name"] = ", ".join(booking["client_names"])
-
-        result.append(booking)
-    conn.close()
-    return result
 
 @router.get("/{booking_id}")
 def get_booking(booking_id: int, current_user: dict = Depends(get_current_user)):
@@ -145,6 +171,22 @@ def get_booking(booking_id: int, current_user: dict = Depends(get_current_user))
     require_sales_assignment(cursor, "booking", booking_id, current_user)
 
     bk_dict = dict(bk)
+    cost_val = float(bk_dict.get("total_cost") or 0.0)
+    if cost_val == 0.0 and bk["budget_id"]:
+        cursor.execute("SELECT total_cost FROM budgets WHERE id = ?;", (bk["budget_id"],))
+        b_cost = cursor.fetchone()
+        if b_cost and b_cost[0]:
+            cost_val = float(b_cost[0])
+    if cost_val == 0.0:
+        cursor.execute("""
+            SELECT SUM(cost_price * quantity)
+            FROM budget_items
+            WHERE booking_id = ? OR (booking_id IS NULL AND budget_id = ?);
+        """, (booking_id, bk["budget_id"]))
+        bi_cost = cursor.fetchone()
+        if bi_cost and bi_cost[0]:
+            cost_val = float(bi_cost[0])
+    bk_dict["total_cost"] = cost_val
     bk_dict["seller_ids"] = get_seller_ids(cursor, "booking", booking_id)
     if bk_dict["seller_ids"]:
         placeholders = ",".join("?" for _ in bk_dict["seller_ids"])
@@ -179,9 +221,10 @@ def get_booking(booking_id: int, current_user: dict = Depends(get_current_user))
         FROM budget_items bi
         LEFT JOIN suppliers s ON s.id = bi.supplier_id
         LEFT JOIN clients c ON c.id = bi.client_id
-        WHERE bi.budget_id = ?
+        WHERE bi.booking_id = ?
+           OR (bi.booking_id IS NULL AND bi.budget_id = ?)
         ORDER BY bi.id;
-    """, (bk["budget_id"],))
+    """, (booking_id, bk["budget_id"]))
     items_list = []
     for row in cursor.fetchall():
         item_dict = dict(row)
@@ -256,93 +299,180 @@ def get_booking(booking_id: int, current_user: dict = Depends(get_current_user))
 @router.post("", response_model=BookingOut)
 def create_booking(payload: BookingCreate, current_user: dict = Depends(get_current_user)):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    try:
+        cursor = conn.cursor()
+        booking_number = generate_booking_number(conn)
+        user_id = current_user.get("id", 1)
+        seller_ids = payload.seller_ids
+        if seller_ids is None and payload.budget_id:
+            cursor.execute("SELECT id FROM budgets WHERE id = ?;", (payload.budget_id,))
+            if cursor.fetchone():
+                require_sales_assignment(cursor, "budget", payload.budget_id, current_user)
+                seller_ids = get_seller_ids(cursor, "budget", payload.budget_id)
+        seller_ids = initial_seller_ids(cursor, seller_ids, current_user)
 
-    booking_number = generate_booking_number(conn)
-    user_id = current_user.get("id", 1)
-    seller_ids = payload.seller_ids
-    if seller_ids is None and payload.budget_id:
-        cursor.execute("SELECT id FROM budgets WHERE id = ?;", (payload.budget_id,))
-        if cursor.fetchone():
-            require_sales_assignment(cursor, "budget", payload.budget_id, current_user)
-            seller_ids = get_seller_ids(cursor, "budget", payload.budget_id)
-    seller_ids = initial_seller_ids(cursor, seller_ids, current_user)
+        raw_client_ids = payload.client_ids if payload.client_ids is not None else ([payload.client_id] if payload.client_id else [])
+        client_ids = validate_client_ids(cursor, raw_client_ids)
+        primary_client_id = client_ids[0]
 
-    raw_client_ids = payload.client_ids if payload.client_ids is not None else ([payload.client_id] if payload.client_id else [])
-    client_ids = validate_client_ids(cursor, raw_client_ids)
-    primary_client_id = client_ids[0]
+        total_cost = sum(item.cost_price * item.quantity for item in payload.items) if payload.items else (payload.total_cost or 0.0)
+        items_sale_total = sum(item.sale_price * item.quantity for item in payload.items) if payload.items else 0.0
+        total_amount = items_sale_total if (items_sale_total > 0 or payload.items) else (payload.total_amount or 0.0)
 
-    cursor.execute("""
-        INSERT INTO bookings (booking_number, budget_id, client_id, user_id, title, destination, start_date, end_date, currency, status, total_amount, paid_amount, balance_due, notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0.0, ?, ?);
-    """, (
-        booking_number, payload.budget_id, primary_client_id, user_id,
-        payload.title, payload.destination, payload.start_date or "", payload.end_date or "",
-        payload.currency or "USD", payload.status or "Confirmada", payload.total_amount,
-        payload.total_amount, payload.notes or ""
-    ))
-    booking_id = cursor.lastrowid
-    set_seller_ids(cursor, "booking", booking_id, seller_ids)
-    set_client_ids(cursor, "booking", booking_id, client_ids)
-    conn.commit()
+        cursor.execute("""
+            INSERT INTO bookings (
+                booking_number, budget_id, client_id, user_id, title, destination,
+                start_date, end_date, currency, exchange_rate, status, total_cost,
+                total_amount, paid_amount, balance_due, notes
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0.0, ?, ?);
+        """, (
+            booking_number, payload.budget_id, primary_client_id, user_id,
+            payload.title, payload.destination, payload.start_date or "", payload.end_date or "",
+            payload.currency or "USD", payload.exchange_rate or 1.0, payload.status or "Presupuesto",
+            total_cost, total_amount, total_amount, payload.notes or ""
+        ))
+        booking_id = cursor.lastrowid
+        set_seller_ids(cursor, "booking", booking_id, seller_ids)
+        set_client_ids(cursor, "booking", booking_id, client_ids)
 
-    conn.close()
+        for item in payload.items:
+            subtotal = item.sale_price * item.quantity
+            cursor.execute("""
+                INSERT INTO budget_items (
+                    booking_id, service_type, description, supplier_id, client_id,
+                    cost_price, sale_price, quantity, subtotal
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """, (
+                booking_id, item.service_type, item.description, item.supplier_id,
+                item.client_id, item.cost_price, item.sale_price, item.quantity, subtotal
+            ))
+        conn.commit()
+    finally:
+        conn.close()
+
     return get_booking(booking_id, current_user)
 
-@router.put("/{booking_id}")
-def update_booking(booking_id: int, current_user: dict = Depends(get_current_user)):
+@router.put("/{booking_id}", response_model=BookingOut)
+def update_booking(booking_id: int, payload: BookingUpdate, current_user: dict = Depends(get_current_user)):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM bookings WHERE id = ?;", (booking_id,))
+        existing = cursor.fetchone()
+        if not existing:
+            raise HTTPException(status_code=404, detail="Reserva no encontrada")
+        require_sales_assignment(cursor, "booking", booking_id, current_user)
 
-    cursor.execute("SELECT id FROM bookings WHERE id = ?;", (booking_id,))
-    if not cursor.fetchone():
+        raw_client_ids = payload.client_ids if payload.client_ids is not None else ([payload.client_id] if payload.client_id else [])
+        client_ids = validate_client_ids(cursor, raw_client_ids)
+        primary_client_id = client_ids[0]
+
+        total_cost = sum(item.cost_price * item.quantity for item in payload.items) if payload.items else (payload.total_cost or float(existing["total_cost"] or 0.0))
+        items_sale_total = sum(item.sale_price * item.quantity for item in payload.items) if payload.items else 0.0
+        total_amount = items_sale_total if (items_sale_total > 0 or payload.items) else (payload.total_amount or float(existing["total_amount"] or 0.0))
+        paid_amount = float(existing["paid_amount"] or 0.0)
+        balance_due = max(0.0, total_amount - paid_amount)
+
+        cursor.execute("""
+            UPDATE bookings
+            SET client_id = ?, title = ?, destination = ?, start_date = ?, end_date = ?,
+                currency = ?, exchange_rate = ?, status = ?, total_cost = ?,
+                total_amount = ?, balance_due = ?, notes = ?
+            WHERE id = ?;
+        """, (
+            primary_client_id, payload.title, payload.destination, payload.start_date or "",
+            payload.end_date or "", payload.currency or "USD", payload.exchange_rate or 1.0,
+            payload.status or existing["status"], total_cost, total_amount, balance_due,
+            payload.notes or "", booking_id
+        ))
+
+        set_client_ids(cursor, "booking", booking_id, client_ids)
+        if payload.seller_ids is not None:
+            seller_ids = validate_seller_ids(cursor, payload.seller_ids)
+            set_seller_ids(cursor, "booking", booking_id, seller_ids)
+
+        if payload.items is not None:
+            cursor.execute("DELETE FROM budget_items WHERE booking_id = ?;", (booking_id,))
+            for item in payload.items:
+                subtotal = item.sale_price * item.quantity
+                cursor.execute("""
+                    INSERT INTO budget_items (
+                        booking_id, service_type, description, supplier_id, client_id,
+                        cost_price, sale_price, quantity, subtotal
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+                """, (
+                    booking_id, item.service_type, item.description, item.supplier_id,
+                    item.client_id, item.cost_price, item.sale_price, item.quantity, subtotal
+                ))
+
+        conn.commit()
+    finally:
         conn.close()
-        raise HTTPException(status_code=404, detail="Reserva no encontrada")
-    require_sales_assignment(cursor, "booking", booking_id, current_user)
-    conn.close()
-    raise HTTPException(
-        status_code=409,
-        detail="Las reservas son de solo lectura. Vuelva a presupuesto para realizar modificaciones.",
-    )
+
+    return get_booking(booking_id, current_user)
+
+@router.post("/{booking_id}/confirm")
+def confirm_booking(booking_id: int, current_user: dict = Depends(get_current_user)):
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM bookings WHERE id = ?;", (booking_id,))
+        existing = cursor.fetchone()
+        if not existing:
+            raise HTTPException(status_code=404, detail="Reserva no encontrada")
+        require_sales_assignment(cursor, "booking", booking_id, current_user)
+
+        cursor.execute("UPDATE bookings SET status = 'Confirmada' WHERE id = ?;", (booking_id,))
+        if existing["budget_id"]:
+            cursor.execute("UPDATE budgets SET status = 'Convertido' WHERE id = ?;", (existing["budget_id"],))
+        conn.commit()
+    finally:
+        conn.close()
+
+    return {"message": "Reserva confirmada exitosamente", "booking_id": booking_id, "status": "Confirmada"}
 
 @router.post("/{booking_id}/revert-to-budget")
 def revert_to_budget(booking_id: int, current_user: dict = Depends(get_current_user)):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM bookings WHERE id = ?;", (booking_id,))
+        booking = cursor.fetchone()
+        if not booking:
+            raise HTTPException(status_code=404, detail="Reserva no encontrada")
+        require_sales_assignment(cursor, "booking", booking_id, current_user)
 
-    cursor.execute("SELECT * FROM bookings WHERE id = ?;", (booking_id,))
-    booking = cursor.fetchone()
-    if not booking:
+        if booking["budget_id"]:
+            cursor.execute("UPDATE budgets SET status = 'Borrador' WHERE id = ?;", (booking["budget_id"],))
+
+        cursor.execute("UPDATE bookings SET status = 'Presupuesto' WHERE id = ?;", (booking_id,))
+        conn.commit()
+    finally:
         conn.close()
-        raise HTTPException(status_code=404, detail="Reserva no encontrada")
-    require_sales_assignment(cursor, "booking", booking_id, current_user)
 
-    if booking["budget_id"]:
-        cursor.execute("UPDATE budgets SET status = 'Borrador' WHERE id = ?;", (booking["budget_id"],))
-
-    cursor.execute("UPDATE bookings SET status = 'En presupuesto' WHERE id = ?;", (booking_id,))
-    conn.commit()
-    conn.close()
-
-    return {"message": "Reserva devuelta a presupuesto. El historial de pagos se conserva.", "payments_preserved": True}
+    return {"message": "Reserva cambiada a estado Presupuesto.", "payments_preserved": True}
 
 @router.delete("/{booking_id}")
 def delete_booking(booking_id: int, current_user: dict = Depends(get_current_user)):
     conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT id FROM bookings WHERE id = ?;", (booking_id,))
-    if not cursor.fetchone():
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM bookings WHERE id = ?;", (booking_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Reserva no encontrada")
+        require_sales_assignment(cursor, "booking", booking_id, current_user)
+
+        cursor.execute("""
+            DELETE FROM supplier_payments
+            WHERE payable_id IN (SELECT id FROM supplier_payables WHERE booking_id = ?);
+        """, (booking_id,))
+        cursor.execute("DELETE FROM supplier_payables WHERE booking_id = ?;", (booking_id,))
+        cursor.execute("DELETE FROM payments WHERE booking_id = ?;", (booking_id,))
+        cursor.execute("DELETE FROM budget_items WHERE booking_id = ?;", (booking_id,))
+        cursor.execute("DELETE FROM booking_clients WHERE booking_id = ?;", (booking_id,))
+        cursor.execute("DELETE FROM booking_sellers WHERE booking_id = ?;", (booking_id,))
+        cursor.execute("DELETE FROM bookings WHERE id = ?;", (booking_id,))
+        conn.commit()
+    finally:
         conn.close()
-        raise HTTPException(status_code=404, detail="Reserva no encontrada")
-    cursor.execute("""
-        DELETE FROM supplier_payments
-        WHERE payable_id IN (SELECT id FROM supplier_payables WHERE booking_id = ?);
-    """, (booking_id,))
-    cursor.execute("DELETE FROM supplier_payables WHERE booking_id = ?;", (booking_id,))
-    cursor.execute("DELETE FROM payments WHERE booking_id = ?;", (booking_id,))
-    cursor.execute("DELETE FROM booking_clients WHERE booking_id = ?;", (booking_id,))
-    cursor.execute("DELETE FROM booking_sellers WHERE booking_id = ?;", (booking_id,))
-    cursor.execute("DELETE FROM bookings WHERE id = ?;", (booking_id,))
-    conn.commit()
-    conn.close()
     return {"message": "Reserva, pagos y egresos vinculados eliminados exitosamente"}

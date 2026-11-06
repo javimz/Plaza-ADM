@@ -59,7 +59,7 @@ def get_budgets(include_converted: bool = False, current_user: dict = Depends(ge
           AND (? = 1 OR (
               b.status != 'Convertido'
               AND NOT EXISTS (
-                  SELECT 1 FROM bookings bk_active WHERE bk_active.budget_id = b.id AND bk_active.status != 'En presupuesto'
+                  SELECT 1 FROM bookings bk_active WHERE bk_active.budget_id = b.id AND bk_active.status NOT IN ('En presupuesto', 'Presupuesto')
               )
           ))
         ORDER BY b.id DESC;
@@ -209,7 +209,7 @@ def _convert_budget_to_booking_internal(cursor, budget_id: int, current_user: di
 
     cursor.execute("SELECT * FROM bookings WHERE budget_id = ? ORDER BY id DESC LIMIT 1;", (budget_id,))
     existing_booking = cursor.fetchone()
-    if existing_booking and existing_booking["status"] != "En presupuesto":
+    if existing_booking and existing_booking["status"] not in ("En presupuesto", "Presupuesto"):
         return {
             "message": "Este presupuesto ya tiene una reserva activa.",
             "booking_id": existing_booking["id"],
@@ -226,18 +226,21 @@ def _convert_budget_to_booking_internal(cursor, budget_id: int, current_user: di
                 status_code=400,
                 detail=f"El total actualizado ({total_amount:.2f}) no puede ser menor que los pagos ya registrados ({paid_amount:.2f})."
             )
+        total_cost = float(budget["total_cost"] or 0)
         cursor.execute("""
             UPDATE bookings
             SET client_id = ?, user_id = ?, title = ?, destination = ?, start_date = ?, end_date = ?,
-                currency = ?, status = 'Confirmada', total_amount = ?, paid_amount = ?, balance_due = ?,
+                currency = ?, status = 'Confirmada', total_cost = ?, total_amount = ?, paid_amount = ?, balance_due = ?,
                 notes = ?
             WHERE id = ?;
         """, (
             budget["client_id"], user_id, budget["title"], budget["destination"],
             budget["start_date"], budget["end_date"], budget["currency"],
-            total_amount, paid_amount, max(0.0, total_amount - paid_amount),
+            total_cost, total_amount, paid_amount, max(0.0, total_amount - paid_amount),
             f"Reactivada desde el presupuesto {budget['budget_number']}", booking_id,
         ))
+        cursor.execute("UPDATE budget_items SET booking_id = ? WHERE budget_id = ?;", (booking_id, budget_id))
+        cursor.execute("UPDATE supplier_payables SET booking_id = ? WHERE budget_id = ?;", (booking_id, budget_id))
         cursor.execute("UPDATE budgets SET status = 'Convertido', total_amount = ? WHERE id = ?;", (total_amount, budget_id))
         set_seller_ids(cursor, "booking", booking_id, get_seller_ids(cursor, "budget", budget_id))
         if budget_client_ids:
@@ -253,17 +256,20 @@ def _convert_budget_to_booking_internal(cursor, budget_id: int, current_user: di
     cursor.execute("SELECT COUNT(*) FROM bookings;")
     b_count = cursor.fetchone()[0] + 1
     booking_number = f"RES-{year}-{b_count:04d}"
+    total_cost = float(budget["total_cost"] or 0)
 
     cursor.execute("""
-        INSERT INTO bookings (booking_number, budget_id, client_id, user_id, title, destination, start_date, end_date, currency, status, total_amount, paid_amount, balance_due, notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Confirmada', ?, 0.0, ?, ?);
+        INSERT INTO bookings (booking_number, budget_id, client_id, user_id, title, destination, start_date, end_date, currency, exchange_rate, status, total_cost, total_amount, paid_amount, balance_due, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Confirmada', ?, ?, 0.0, ?, ?);
     """, (
         booking_number, budget["id"], budget["client_id"], user_id,
         budget["title"], budget["destination"], budget["start_date"], budget["end_date"],
-        budget["currency"], total_amount, total_amount,
+        budget["currency"], budget["exchange_rate"] or 1.0, total_cost, total_amount, total_amount,
         f"Generado a partir del presupuesto {budget['budget_number']}"
     ))
     booking_id = cursor.lastrowid
+    cursor.execute("UPDATE budget_items SET booking_id = ? WHERE budget_id = ?;", (booking_id, budget_id))
+    cursor.execute("UPDATE supplier_payables SET booking_id = ? WHERE budget_id = ?;", (booking_id, budget_id))
     set_seller_ids(cursor, "booking", booking_id, get_seller_ids(cursor, "budget", budget_id))
     if budget_client_ids:
         set_client_ids(cursor, "booking", booking_id, budget_client_ids)
@@ -324,7 +330,7 @@ def update_budget(budget_id: int, payload: BudgetCreate, current_user: dict = De
         if not existing:
             raise HTTPException(status_code=404, detail="Presupuesto no encontrado")
         require_sales_assignment(cursor, "budget", budget_id, current_user)
-        cursor.execute("SELECT 1 FROM bookings WHERE budget_id = ? AND status != 'En presupuesto' LIMIT 1;", (budget_id,))
+        cursor.execute("SELECT 1 FROM bookings WHERE budget_id = ? AND status NOT IN ('En presupuesto', 'Presupuesto') LIMIT 1;", (budget_id,))
         if (existing["status"] == "Convertido" or cursor.fetchone()) and payload.status not in ["Convertido", "Convertido a Reserva"]:
             raise HTTPException(status_code=409, detail="Este presupuesto está en reserva. Reviértalo a presupuesto antes de modificarlo.")
 

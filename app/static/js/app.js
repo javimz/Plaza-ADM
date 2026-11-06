@@ -51,7 +51,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (avatarEl) avatarEl.innerText = (currentUser.full_name || currentUser.username || 'U').charAt(0).toUpperCase();
 
         applyRolePermissions();
-        const initialTab = (ROLE_ALLOWED_TABS[currentUser.role] || ['budgets'])[0];
+        const initialTab = (ROLE_ALLOWED_TABS[currentUser.role] || ['bookings'])[0];
         switchTab(initialTab);
         loadClientsCache().catch(e => console.error(e));
         loadSuppliersCache().catch(e => console.error(e));
@@ -149,7 +149,7 @@ async function loginUser(event) {
         const loginScreen = document.getElementById('login-screen');
         if (loginScreen) loginScreen.classList.add('hidden');
 
-        const initialTab = (ROLE_ALLOWED_TABS[currentUser.role] || ['budgets'])[0];
+        const initialTab = (ROLE_ALLOWED_TABS[currentUser.role] || ['bookings'])[0];
         try {
             switchTab(initialTab);
         } catch (tabErr) {
@@ -240,10 +240,10 @@ async function apiFetch(url, method = 'GET', body = null) {
 
 // TAB SWITCHING & PERMISSIONS
 const ROLE_ALLOWED_TABS = {
-    'admin': ['dashboard', 'budgets', 'bookings', 'payments', 'clients', 'suppliers', 'supplier-payables', 'profits', 'audit', 'users'],
-    'ventas': ['dashboard', 'budgets', 'bookings', 'payments', 'clients', 'suppliers', 'supplier-payables', 'profits'],
-    'administrativa': ['budgets', 'bookings', 'payments', 'clients', 'suppliers', 'supplier-payables'],
-    'agente': ['budgets', 'bookings', 'payments', 'clients', 'suppliers']
+    'admin': ['dashboard', 'bookings', 'payments', 'clients', 'suppliers', 'supplier-payables', 'profits', 'audit', 'users'],
+    'ventas': ['dashboard', 'bookings', 'payments', 'clients', 'suppliers', 'supplier-payables', 'profits'],
+    'administrativa': ['bookings', 'payments', 'clients', 'suppliers', 'supplier-payables'],
+    'agente': ['bookings', 'payments', 'clients', 'suppliers']
 };
 
 function toggleMobileSidebar(open) {
@@ -261,11 +261,11 @@ function toggleMobileSidebar(open) {
 }
 
 function switchTab(tabId) {
-    const tabs = ['dashboard', 'budgets', 'bookings', 'payments', 'supplier-payables', 'profits', 'audit', 'clients', 'suppliers', 'users'];
+    if (tabId === 'budgets') tabId = 'bookings';
+    const tabs = ['dashboard', 'bookings', 'payments', 'supplier-payables', 'profits', 'audit', 'clients', 'suppliers', 'users'];
     const pageTitles = {
         'dashboard': 'Dashboard General',
-        'budgets': 'Gestión de Presupuestos',
-        'bookings': 'Expedientes & Control de Pagos',
+        'bookings': 'Reservas y Pagos',
         'payments': 'Historial General de Pagos Parciales',
         'supplier-payables': 'Pagos a Proveedores',
         'profits': 'Ganancias y Comisiones',
@@ -278,7 +278,7 @@ function switchTab(tabId) {
     const role = currentUser?.role || 'agente';
     const allowedTabs = ROLE_ALLOWED_TABS[role] || ROLE_ALLOWED_TABS['agente'];
     if (!allowedTabs.includes(tabId)) {
-        tabId = allowedTabs[0] || 'budgets';
+        tabId = allowedTabs[0] || 'bookings';
     }
 
     tabs.forEach(t => {
@@ -554,7 +554,7 @@ function canManageSupplierPayables() {
 function applyRolePermissions() {
     const role = currentUser?.role || 'agente';
     const allowed = ROLE_ALLOWED_TABS[role] || ROLE_ALLOWED_TABS['agente'];
-    const allNavTabs = ['dashboard', 'budgets', 'bookings', 'payments', 'clients', 'suppliers', 'supplier-payables', 'profits', 'audit', 'users'];
+    const allNavTabs = ['dashboard', 'bookings', 'payments', 'clients', 'suppliers', 'supplier-payables', 'profits', 'audit', 'users'];
 
     allNavTabs.forEach(t => {
         const btn = document.getElementById(`nav-${t}`);
@@ -1573,62 +1573,153 @@ Egresos ARS: ${formatProfitAmount('ARS', expArs)}`;
     }).join('') : '<p class="text-sm text-slate-400 py-8 text-center">Todavía no hay reservas.</p>';
 }
 
-// PRESUPUESTOS
-async function loadBudgets() {
-    try {
-        const rawBudgets = await apiFetch('/api/budgets');
-        const budgets = (rawBudgets || []).filter(b => b.status !== 'Convertido');
-        const tbody = document.getElementById('budgets-table-body');
-        if (budgets.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="7" class="p-4 text-center text-slate-400">No hay presupuestos activos registrados</td></tr>`;
-            applySectionSearch('view-budgets');
-            return;
+// RESERVAS Y PAGOS (MÓDULO UNIFICADO)
+let currentBookingStatusFilter = 'all';
+
+function setBookingStatusFilter(status) {
+    currentBookingStatusFilter = status;
+    const buttons = document.querySelectorAll('#bookings-status-filter-buttons .bk-filter-btn');
+    buttons.forEach(btn => {
+        if (btn.getAttribute('data-status') === status) {
+            btn.className = 'bk-filter-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-blue-600 text-white shadow-xs transition';
+        } else {
+            btn.className = 'bk-filter-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition';
         }
-
-        tbody.innerHTML = budgets.map(b => {
-            const statusColors = {
-                'Borrador': 'bg-slate-100 text-slate-700',
-                'Enviado': 'bg-blue-100 text-blue-800',
-                'Aprobado': 'bg-emerald-100 text-emerald-800',
-                'Rechazado': 'bg-rose-100 text-rose-800',
-                'Convertido': 'bg-indigo-100 text-indigo-800'
-            };
-            return `
-                <tr class="border-b border-slate-100 hover:bg-slate-50 transition">
-                    <td class="p-4 font-bold text-slate-900">${b.budget_number}<span class="block text-xs font-normal text-slate-500">${b.booking_number ? `Reserva: ${b.booking_number}` : 'Sin reserva asociada'}</span><span class="block text-xs font-normal text-slate-500">${escapeProfitText((b.seller_names || []).join(', '))}</span></td>
-                    <td class="p-4">${b.client_name || 'N/A'}</td>
-                    <td class="p-4 font-semibold text-slate-800">${b.title} <span class="block text-xs font-normal text-slate-500">${b.destination}</span></td>
-                    <td class="p-4 text-xs text-slate-500">${b.start_date || 'TBD'} al ${b.end_date || 'TBD'}</td>
-                    <td class="p-4 font-bold text-slate-900">${b.currency} $ ${b.total_amount.toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
-                    <td class="p-4"><span class="px-2.5 py-1 rounded-full text-xs font-semibold ${statusColors[b.status] || 'bg-slate-100'}">${b.status}</span></td>
-                    <td class="p-4 text-right space-x-1">
-                        ${b.status !== 'Convertido' ? `
-                            <button onclick="convertToBooking(${b.id})" class="text-xs bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-semibold px-2.5 py-1 rounded-lg transition" title="Convertir a Reserva">
-                                &check; Convertir a Reserva
-                            </button>
-                        ` : `
-                            <button onclick="revertBudgetToDraft(${b.id})" class="text-xs bg-amber-50 text-amber-700 hover:bg-amber-100 font-semibold px-2 py-1 rounded-lg transition" title="Volver a Presupuesto/Borrador">
-                                &olarr; Revertir a Presupuesto
-                            </button>
-                        `}
-                        ${b.status !== 'Convertido' ? `<button onclick="editBudget(${b.id})" class="text-slate-400 hover:text-blue-600 p-1" title="Editar presupuesto"><i data-lucide="edit" class="w-4 h-4"></i></button><button onclick="deleteBudget(${b.id})" class="text-slate-400 hover:text-rose-600 p-1" title="Eliminar"><i data-lucide="trash-2" class="w-4 h-4"></i></button>` : ''}
-                    </td>
-                </tr>
-            `;
-        }).join('');
-
-        applySectionSearch('view-budgets');
-        if (window.lucide) lucide.createIcons();
-    } catch (e) { console.error(e); }
+    });
+    renderBookingsTable();
 }
 
-async function openNewBudgetModal() {
+function renderBookingsTable() {
+    const tbody = document.getElementById('bookings-table-body');
+    if (!tbody) return;
+
+    let list = bookingsCache || [];
+    if (currentBookingStatusFilter !== 'all') {
+        list = list.filter(b => (b.status || '').toLowerCase() === currentBookingStatusFilter.toLowerCase());
+    }
+
+    if (list.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="11" class="p-6 text-center text-slate-400">No se encontraron reservas con el filtro actual</td></tr>`;
+        applySectionSearch('view-bookings');
+        return;
+    }
+
+    const statusBadge = (st) => {
+        const s = (st || 'Confirmada').toLowerCase();
+        if (s === 'presupuesto' || s === 'borrador') {
+            return `<span class="px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">Presupuesto</span>`;
+        }
+        if (s === 'confirmada' || s === 'aprobado') {
+            return `<span class="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">Confirmada</span>`;
+        }
+        if (s === 'en curso') {
+            return `<span class="px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">En Curso</span>`;
+        }
+        if (s === 'completada') {
+            return `<span class="px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-800">Completada</span>`;
+        }
+        if (s === 'cancelada' || s === 'rechazado') {
+            return `<span class="px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-100 text-rose-800">Cancelada</span>`;
+        }
+        return `<span class="px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-700">${st}</span>`;
+    };
+
+    tbody.innerHTML = list.map(b => {
+        const isBudget = (b.status || '').toLowerCase() === 'presupuesto';
+        const progress = b.total_amount > 0 ? Math.min(100, Math.round((b.paid_amount / b.total_amount) * 100)) : 0;
+        const sellers = (b.seller_names || []).join(', ');
+        const dates = (b.start_date || b.end_date) ? `${b.start_date || 'TBD'} al ${b.end_date || 'TBD'}` : '-';
+
+        return `
+            <tr class="border-b border-slate-100 hover:bg-slate-50 transition">
+                <td class="p-4 font-bold text-blue-600">
+                    ${b.booking_number}
+                    ${sellers ? `<span class="block text-xs font-normal text-slate-500">${escapeProfitText(sellers)}</span>` : ''}
+                </td>
+                <td class="p-4 font-medium text-slate-800">${escapeProfitText(b.client_name || 'N/A')}</td>
+                <td class="p-4 font-semibold text-slate-800">
+                    ${escapeProfitText(b.title || '')}
+                    <span class="block text-xs font-normal text-slate-500">${escapeProfitText(b.destination || '')}</span>
+                </td>
+                <td class="p-4 text-xs text-slate-500 whitespace-nowrap">${dates}</td>
+                <td class="p-4">${statusBadge(b.status)}</td>
+                <td class="p-4 font-bold text-slate-900">${b.currency} $ ${Number(b.total_amount || 0).toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
+                <td class="p-4 font-semibold text-emerald-600">
+                    ${isBudget ? '<span class="text-xs text-slate-400 font-normal">-</span>' : `
+                        $ ${Number(b.paid_amount || 0).toLocaleString('es-AR', {minimumFractionDigits: 2})}
+                        <div class="w-full bg-slate-200 h-1.5 rounded-full mt-1 overflow-hidden">
+                            <div class="bg-emerald-500 h-full" style="width: ${progress}%"></div>
+                        </div>
+                    `}
+                </td>
+                <td class="p-4 font-bold ${b.balance_due > 0 ? 'text-amber-600' : 'text-slate-400'}">
+                    ${isBudget ? '<span class="text-xs text-slate-400 font-normal">-</span>' : `$ ${Number(b.balance_due || 0).toLocaleString('es-AR', {minimumFractionDigits: 2})}`}
+                </td>
+                <td class="p-4 font-semibold text-slate-700">${b.currency} $ ${Number(b.total_cost || 0).toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
+                <td class="p-4 font-semibold ${Number(b.cost_balance || 0) < 0 ? 'text-rose-700' : 'text-slate-700'}">
+                    ${isBudget ? '<span class="text-xs text-slate-400 font-normal">-</span>' : `${b.currency} $ ${Number(b.cost_balance || 0).toLocaleString('es-AR', {minimumFractionDigits: 2})}`}
+                </td>
+                <td class="p-4 text-right space-x-1 whitespace-nowrap">
+                    ${isBudget ? `
+                        <button onclick="confirmBooking(${b.id})" class="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-2.5 py-1.5 rounded-lg transition shadow-sm inline-flex items-center gap-1 cursor-pointer" title="Confirmar esta reserva">
+                            ✓ Confirmar
+                        </button>
+                    ` : `
+                        <button onclick="showBookingPaymentsHistory(${b.id})" class="text-xs bg-blue-50 text-blue-700 hover:bg-blue-100 font-semibold px-2 py-1.5 rounded-lg transition shadow-sm cursor-pointer" title="Ver detalle de servicios y pagos">
+                            Ver detalle
+                        </button>
+                        <button onclick="openPaymentModal(${b.id})" class="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-2.5 py-1.5 rounded-lg transition shadow-sm cursor-pointer" title="Registrar cobro o egreso">
+                            + Pago
+                        </button>
+                    `}
+                    <button onclick="editBooking(${b.id})" class="text-slate-400 hover:text-blue-600 p-1.5 rounded-lg hover:bg-slate-100 transition inline-flex items-center cursor-pointer" title="Editar reserva / presupuesto">
+                        <i data-lucide="edit" class="w-4 h-4"></i>
+                    </button>
+                    <button onclick="deleteBooking(${b.id})" class="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-slate-100 transition inline-flex items-center cursor-pointer" title="Eliminar">
+                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    applySectionSearch('view-bookings');
+    if (window.lucide) lucide.createIcons();
+}
+
+async function loadBookings() {
+    try {
+        const bookings = await apiFetch('/api/bookings');
+        bookingsCache = bookings || [];
+        renderBookingsTable();
+
+        const salesPaymentsPanel = document.getElementById('sales-payments-panel');
+        if (salesPaymentsPanel && !salesPaymentsPanel.classList.contains('hidden')) {
+            loadSalesPaymentsDetails();
+        }
+    } catch (e) {
+        console.error('Error al cargar reservas:', e);
+    }
+}
+
+async function loadBudgets() {
+    return loadBookings();
+}
+
+async function openNewBookingModal() {
     document.body.style.cursor = 'wait';
     try {
-        document.getElementById('modal-budget-title').innerText = 'Nuevo Presupuesto';
-        document.getElementById('budget-id').value = '';
-        document.getElementById('budget-associated-booking').value = 'Sin reserva asociada';
-        document.getElementById('form-budget').reset();
+        const titleEl = document.getElementById('modal-booking-title') || document.getElementById('modal-budget-title');
+        if (titleEl) titleEl.innerText = 'Nueva Reserva';
+
+        const idInput = document.getElementById('booking-id') || document.getElementById('budget-id');
+        if (idInput) idInput.value = '';
+
+        const form = document.getElementById('form-booking') || document.getElementById('form-budget');
+        if (form) form.reset();
+
+        const statusSelect = document.getElementById('budget-status');
+        if (statusSelect) statusSelect.value = 'Presupuesto';
 
         if (!salespeopleCache.length) await loadSalespeopleCache();
         if (!clientsCache.length) await loadClientsCache();
@@ -1643,10 +1734,12 @@ async function openNewBudgetModal() {
         hideBudgetDropdown('budget-seller-dropdown');
 
         const itemsContainer = document.getElementById('budget-items-container');
-        itemsContainer.innerHTML = '';
-        addBudgetItemRow(); // Add 1 default empty item row
+        if (itemsContainer) {
+            itemsContainer.innerHTML = '';
+            addBudgetItemRow();
+        }
 
-        openModal('modal-budget');
+        openModal(document.getElementById('modal-booking') ? 'modal-booking' : 'modal-budget');
     } finally {
         document.body.style.cursor = 'default';
     }
@@ -1707,15 +1800,16 @@ function addBudgetItemRow(item = {}) {
     if (window.lucide) lucide.createIcons();
 }
 
-async function saveBudget(e) {
-    e.preventDefault();
-    const id = document.getElementById('budget-id').value;
+async function saveBooking(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    const idInput = document.getElementById('booking-id') || document.getElementById('budget-id');
+    const id = idInput ? idInput.value : '';
 
     if (!budgetSelectedClientIds.length) {
-        return alert('Seleccione al menos un cliente para el presupuesto.');
+        return alert('Seleccione al menos un cliente para la reserva.');
     }
     if (!budgetSelectedSellerIds.length) {
-        return alert('Asigne al menos un vendedor al presupuesto.');
+        return alert('Asigne al menos un vendedor a la reserva.');
     }
 
     const itemRows = document.querySelectorAll('#budget-items-container > div');
@@ -1738,6 +1832,8 @@ async function saveBudget(e) {
         }
     });
 
+    const statusVal = document.getElementById('budget-status')?.value || 'Presupuesto';
+
     const payload = {
         client_ids: budgetSelectedClientIds,
         title: document.getElementById('budget-title-input').value,
@@ -1745,29 +1841,35 @@ async function saveBudget(e) {
         start_date: document.getElementById('budget-start-date').value,
         end_date: document.getElementById('budget-end-date').value,
         currency: document.getElementById('budget-currency').value,
-        status: document.getElementById('budget-status').value,
-        notes: document.getElementById('budget-notes').value,
+        status: statusVal,
+        notes: document.getElementById('budget-notes')?.value || '',
         seller_ids: budgetSelectedSellerIds,
         items: items
     };
 
-    if (id) {
-        await apiFetch(`/api/budgets/${id}`, 'PUT', payload);
-    } else {
-        await apiFetch('/api/budgets', 'POST', payload);
-    }
+    try {
+        if (id) {
+            await apiFetch(`/api/bookings/${id}`, 'PUT', payload);
+        } else {
+            await apiFetch('/api/bookings', 'POST', payload);
+        }
 
-    closeModal('modal-budget');
-    await refreshAfterFinancialChange();
+        closeModal(document.getElementById('modal-booking') ? 'modal-booking' : 'modal-budget');
+        await refreshAfterFinancialChange();
+    } catch (err) {
+        alert(err.message || 'Error al guardar la reserva');
+    }
 }
 
-async function editBudget(id) {
+async function editBooking(id) {
     document.body.style.cursor = 'wait';
     try {
-        const b = await apiFetch(`/api/budgets/${id}`);
-        document.getElementById('modal-budget-title').innerText = `Editar Presupuesto ${b.budget_number}`;
-        document.getElementById('budget-id').value = b.id;
-        document.getElementById('budget-associated-booking').value = b.booking_number || 'Sin reserva asociada';
+        const b = await apiFetch(`/api/bookings/${id}`);
+        const titleEl = document.getElementById('modal-booking-title') || document.getElementById('modal-budget-title');
+        if (titleEl) titleEl.innerText = `Editar ${b.booking_number}`;
+
+        const idInput = document.getElementById('booking-id') || document.getElementById('budget-id');
+        if (idInput) idInput.value = b.id;
 
         if (!salespeopleCache.length) await loadSalespeopleCache();
         if (!clientsCache.length) await loadClientsCache();
@@ -1781,92 +1883,67 @@ async function editBudget(id) {
         hideBudgetDropdown('budget-client-dropdown');
         hideBudgetDropdown('budget-seller-dropdown');
 
-        document.getElementById('budget-title-input').value = b.title;
-        document.getElementById('budget-destination').value = b.destination;
-        document.getElementById('budget-start-date').value = b.start_date || '';
-        document.getElementById('budget-end-date').value = b.end_date || '';
-        document.getElementById('budget-currency').value = b.currency;
-        document.getElementById('budget-status').value = b.status;
-        document.getElementById('budget-notes').value = b.notes || '';
+        const titleInput = document.getElementById('budget-title-input');
+        if (titleInput) titleInput.value = b.title || '';
+
+        const destInput = document.getElementById('budget-destination');
+        if (destInput) destInput.value = b.destination || '';
+
+        const startInput = document.getElementById('budget-start-date');
+        if (startInput) startInput.value = b.start_date || '';
+
+        const endInput = document.getElementById('budget-end-date');
+        if (endInput) endInput.value = b.end_date || '';
+
+        const currInput = document.getElementById('budget-currency');
+        if (currInput) currInput.value = b.currency || 'USD';
+
+        const statusSelect = document.getElementById('budget-status');
+        if (statusSelect) statusSelect.value = b.status || 'Presupuesto';
+
+        const notesInput = document.getElementById('budget-notes');
+        if (notesInput) notesInput.value = b.notes || '';
 
         const itemsContainer = document.getElementById('budget-items-container');
-        itemsContainer.innerHTML = '';
-        if (b.items && b.items.length > 0) {
-            b.items.forEach(item => addBudgetItemRow(item));
-        } else {
-            addBudgetItemRow();
+        if (itemsContainer) {
+            itemsContainer.innerHTML = '';
+            if (b.items && b.items.length > 0) {
+                b.items.forEach(item => addBudgetItemRow(item));
+            } else {
+                addBudgetItemRow();
+            }
         }
 
-        openModal('modal-budget');
+        openModal(document.getElementById('modal-booking') ? 'modal-booking' : 'modal-budget');
     } finally {
         document.body.style.cursor = 'default';
     }
 }
 
-async function convertToBooking(budgetId) {
-    if (!confirm('¿Desea convertir este presupuesto en una Reserva Activa?')) return;
-    await apiFetch(`/api/budgets/${budgetId}/convert-to-booking`, 'POST');
-    alert('Presupuesto convertido a Reserva exitosamente!');
-    await refreshAfterFinancialChange();
-}
-
-async function deleteBudget(id) {
-    if (!confirm('¿Está seguro de eliminar este presupuesto?')) return;
-    await apiFetch(`/api/budgets/${id}`, 'DELETE');
-    await refreshAfterFinancialChange();
-}
-
-// RESERVAS Y PAGOS
-async function loadBookings() {
+async function confirmBooking(id) {
+    if (!confirm('¿Desea confirmar esta reserva?')) return;
     try {
-        const bookings = await apiFetch('/api/bookings');
-        bookingsCache = bookings;
-        const tbody = document.getElementById('bookings-table-body');
-        if (bookings.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="9" class="p-4 text-center text-slate-400">No hay reservas registradas</td></tr>`;
-            applySectionSearch('view-bookings');
-            return;
-        }
-
-        tbody.innerHTML = bookings.map(b => {
-            const progress = b.total_amount > 0 ? Math.min(100, Math.round((b.paid_amount / b.total_amount) * 100)) : 0;
-            return `
-                <tr class="border-b border-slate-100 hover:bg-slate-50 transition">
-                    <td class="p-4 font-bold text-blue-600">${b.booking_number}<span class="block text-xs font-normal text-slate-500">Presupuesto: ${b.budget_number || 'Sin presupuesto'}</span><span class="block text-xs font-normal text-slate-500">${escapeProfitText((b.seller_names || []).join(', '))}</span></td>
-                    <td class="p-4 font-medium text-slate-800">${b.client_name || 'N/A'}</td>
-                    <td class="p-4">${b.title} <span class="block text-xs text-slate-500">${b.destination}</span></td>
-                    <td class="p-4 font-bold text-slate-900">${b.currency} $ ${b.total_amount.toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
-                    <td class="p-4 font-semibold text-emerald-600">
-                        $ ${b.paid_amount.toLocaleString('es-AR', {minimumFractionDigits: 2})}
-                        <div class="w-full bg-slate-200 h-1.5 rounded-full mt-1 overflow-hidden">
-                            <div class="bg-emerald-500 h-full" style="width: ${progress}%"></div>
-                        </div>
-                    </td>
-                    <td class="p-4 font-bold ${b.balance_due > 0 ? 'text-amber-600' : 'text-slate-400'}">$ ${b.balance_due.toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
-                    <td class="p-4 font-semibold text-slate-700">${b.currency} $ ${Number(b.total_cost || 0).toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
-                    <td class="p-4 font-semibold ${Number(b.cost_balance || 0) < 0 ? 'text-rose-700' : 'text-slate-700'}">${b.currency} $ ${Number(b.cost_balance || 0).toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
-                    <td class="p-4 text-right space-x-1">
-                        <button onclick="showBookingPaymentsHistory(${b.id})" class="text-xs bg-blue-50 text-blue-700 hover:bg-blue-100 font-semibold px-2 py-1.5 rounded-lg transition shadow-sm" title="Ver detalle de reserva, servicios y pagos">
-                            Ver detalle
-                        </button>
-                        <button onclick="openPaymentModal(${b.id})" class="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-2.5 py-1.5 rounded-lg transition shadow-sm" title="Registrar cobro o egreso">
-                            + Pago
-                        </button>
-                        <button onclick="revertBookingToBudget(${b.id})" class="text-xs bg-amber-50 text-amber-700 hover:bg-amber-100 font-semibold px-2 py-1.5 rounded-lg transition" title="Volver a Presupuesto; los pagos registrados se conservan">
-                            A Presupuesto
-                        </button>
-                        <button onclick="deleteBooking(${b.id})" class="text-slate-400 hover:text-rose-600 p-1" title="Eliminar"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
-                    </td>
-                </tr>
-            `;
-        }).join('');
-
-        applySectionSearch('view-bookings');
-        const salesPaymentsPanel = document.getElementById('sales-payments-panel');
-        if (!salesPaymentsPanel.classList.contains('hidden')) loadSalesPaymentsDetails();
-        if (window.lucide) lucide.createIcons();
-    } catch (e) { console.error(e); }
+        await apiFetch(`/api/bookings/${id}/confirm`, 'POST');
+        await refreshAfterFinancialChange();
+    } catch (e) {
+        alert(e.message || 'Error al confirmar la reserva');
+    }
 }
+
+async function revertBookingToBudget(id) {
+    if (!confirm('¿Desea cambiar el estado a Presupuesto?')) return;
+    try {
+        await apiFetch(`/api/bookings/${id}/revert-to-budget`, 'POST');
+        await refreshAfterFinancialChange();
+    } catch (e) {
+        alert(e.message || 'Error al revertir la reserva');
+    }
+}
+
+// Backward-compatibility aliases
+window.saveBudget = saveBooking;
+window.editBudget = editBooking;
+window.convertToBooking = confirmBooking;
 
 let currentActiveBookingPaymentsId = null;
 let currentEditingPayment = null;
@@ -1886,7 +1963,8 @@ async function showBookingPaymentsHistory(bookingId) {
         const datesText = (b.start_date || b.end_date)
             ? ` | Salida: ${b.start_date || '-'} | Regreso: ${b.end_date || '-'}`
             : '';
-        document.getElementById('hist-modal-subtitle').innerText = `${b.title} | Cliente: ${b.client_name} | Presupuesto: ${b.budget_number || 'Sin presupuesto'}${datesText}`;
+        const budgetNote = (b.budget_number && b.budget_number !== b.booking_number) ? ` | Presupuesto: ${b.budget_number}` : '';
+        document.getElementById('hist-modal-subtitle').innerText = `${b.title} | Cliente: ${b.client_name || 'N/A'}${budgetNote}${datesText}`;
         document.getElementById('hist-modal-total').innerText = `${b.currency} $ ${b.total_amount.toLocaleString('es-AR', {minimumFractionDigits: 2})}`;
         document.getElementById('hist-modal-paid').innerText = `${b.currency} $ ${b.paid_amount.toLocaleString('es-AR', {minimumFractionDigits: 2})}`;
         document.getElementById('hist-modal-balance').innerText = `${b.currency} $ ${b.balance_due.toLocaleString('es-AR', {minimumFractionDigits: 2})}`;

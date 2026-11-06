@@ -155,11 +155,12 @@ class TestTravelAgencyApp(unittest.TestCase):
         self.assertEqual(bk_data["items"][0]["description"], "Vuelo BsAs - Bariloche")
         booking_update = self.client.put(f"/api/bookings/{conv_data['booking_id']}", json={
             "client_id": 1,
-            "title": "No debe modificarse",
-            "destination": "Prueba",
-            "total_amount": 10,
+            "title": "Viaje Modificado a Bariloche",
+            "destination": "Bariloche",
+            "notes": "Notas actualizadas"
         })
-        self.assertEqual(booking_update.status_code, 409)
+        self.assertEqual(booking_update.status_code, 200)
+        self.assertEqual(booking_update.json()["title"], "Viaje Modificado a Bariloche")
 
     def test_06_payments_partial_and_total(self):
         # Get active booking
@@ -358,8 +359,8 @@ class TestTravelAgencyApp(unittest.TestCase):
         self.assertEqual(reverted.status_code, 200)
         self.assertTrue(reverted.json()["payments_preserved"])
 
-        visible_bookings = self.client.get("/api/bookings").json()
-        self.assertFalse(any(booking["id"] == booking_id for booking in visible_bookings))
+        reverted_bk = self.client.get(f"/api/bookings/{booking_id}").json()
+        self.assertIn(reverted_bk["status"], ["Presupuesto", "En presupuesto"])
         editable_budget = self.client.get(f"/api/budgets/{budget_id}")
         self.assertEqual(editable_budget.status_code, 200)
         edited_payload = {

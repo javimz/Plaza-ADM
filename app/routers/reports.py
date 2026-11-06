@@ -29,7 +29,7 @@ def get_dashboard_metrics(current_user: dict = Depends(get_current_user)):
             COALESCE(SUM(paid_amount), 0) as total_collected,
             COALESCE(SUM(balance_due), 0) as total_pending
         FROM bookings
-        WHERE status NOT IN ('Cancelada', 'En presupuesto')""" + booking_scope + ";",
+        WHERE status NOT IN ('Cancelada', 'En presupuesto', 'Presupuesto')""" + booking_scope + ";",
         booking_params,
     )
     bk_stats = cursor.fetchone()
@@ -41,7 +41,7 @@ def get_dashboard_metrics(current_user: dict = Depends(get_current_user)):
             COALESCE(SUM(paid_amount), 0) as total_collected,
             COALESCE(SUM(balance_due), 0) as total_pending
         FROM bookings
-        WHERE status NOT IN ('Cancelada', 'En presupuesto')""" + booking_scope + """
+        WHERE status NOT IN ('Cancelada', 'En presupuesto', 'Presupuesto')""" + booking_scope + """
         GROUP BY COALESCE(currency, 'USD');""",
         booking_params,
     )
@@ -58,7 +58,7 @@ def get_dashboard_metrics(current_user: dict = Depends(get_current_user)):
     cursor.execute("""
         SELECT COUNT(*)
         FROM bookings
-        WHERE status NOT IN ('Cancelada', 'En presupuesto') AND balance_due > 0.009""" + booking_scope + ";",
+        WHERE status NOT IN ('Cancelada', 'En presupuesto', 'Presupuesto') AND balance_due > 0.009""" + booking_scope + ";",
         booking_params,
     )
     bookings_with_balance = cursor.fetchone()[0]
@@ -253,7 +253,7 @@ def get_dashboard_metrics(current_user: dict = Depends(get_current_user)):
                ) as client_names
         FROM bookings bk
         LEFT JOIN clients cl ON cl.id = bk.client_id
-        WHERE bk.status NOT IN ('Cancelada', 'En presupuesto')
+        WHERE bk.status NOT IN ('Cancelada', 'En presupuesto', 'Presupuesto')
           AND bk.start_date IS NOT NULL
           AND bk.start_date != ''""" + payment_scope + """
         ORDER BY bk.start_date ASC;
