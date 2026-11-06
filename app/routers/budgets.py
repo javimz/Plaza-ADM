@@ -317,56 +317,54 @@ def create_budget(payload: BudgetCreate, current_user: dict = Depends(get_curren
 @router.put("/{budget_id}", response_model=BudgetOut)
 def update_budget(budget_id: int, payload: BudgetCreate, current_user: dict = Depends(get_current_user)):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT status FROM budgets WHERE id = ?;", (budget_id,))
+        existing = cursor.fetchone()
+        if not existing:
+            raise HTTPException(status_code=404, detail="Presupuesto no encontrado")
+        require_sales_assignment(cursor, "budget", budget_id, current_user)
+        cursor.execute("SELECT 1 FROM bookings WHERE budget_id = ? AND status != 'En presupuesto' LIMIT 1;", (budget_id,))
+        if (existing["status"] == "Convertido" or cursor.fetchone()) and payload.status not in ["Convertido", "Convertido a Reserva"]:
+            raise HTTPException(status_code=409, detail="Este presupuesto está en reserva. Reviértalo a presupuesto antes de modificarlo.")
 
-    cursor.execute("SELECT status FROM budgets WHERE id = ?;", (budget_id,))
-    existing = cursor.fetchone()
-    if not existing:
-        cursor.close()
-        conn.close()
-        raise HTTPException(status_code=404, detail="Presupuesto no encontrado")
-    require_sales_assignment(cursor, "budget", budget_id, current_user)
-    cursor.execute("SELECT 1 FROM bookings WHERE budget_id = ? AND status != 'En presupuesto' LIMIT 1;", (budget_id,))
-    if (existing["status"] == "Convertido" or cursor.fetchone()) and payload.status not in ["Convertido", "Convertido a Reserva"]:
-        cursor.close()
-        conn.close()
-        raise HTTPException(status_code=409, detail="Este presupuesto está en reserva. Reviértalo a presupuesto antes de modificarlo.")
+        raw_client_ids = payload.client_ids if payload.client_ids is not None else ([payload.client_id] if payload.client_id else [])
+        client_ids = validate_client_ids(cursor, raw_client_ids)
+        primary_client_id = client_ids[0]
 
-    raw_client_ids = payload.client_ids if payload.client_ids is not None else ([payload.client_id] if payload.client_id else [])
-    client_ids = validate_client_ids(cursor, raw_client_ids)
-    primary_client_id = client_ids[0]
+        total_cost = sum(item.cost_price * item.quantity for item in payload.items)
+        total_amount = sum(item.sale_price * item.quantity for item in payload.items)
 
-    total_cost = sum(item.cost_price * item.quantity for item in payload.items)
-    total_amount = sum(item.sale_price * item.quantity for item in payload.items)
-
-    cursor.execute("""
-        UPDATE budgets 
-        SET client_id = ?, title = ?, destination = ?, start_date = ?, end_date = ?, currency = ?, exchange_rate = ?, status = ?, total_cost = ?, total_amount = ?, notes = ?
-        WHERE id = ?;
-    """, (
-        primary_client_id, payload.title, payload.destination, payload.start_date or "",
-        payload.end_date or "", payload.currency or "USD", payload.exchange_rate or 1.0,
-        payload.status or "Borrador", total_cost, total_amount, payload.notes or "", budget_id
-    ))
-
-    cursor.execute("DELETE FROM budget_items WHERE budget_id = ?;", (budget_id,))
-    set_client_ids(cursor, "budget", budget_id, client_ids)
-    if payload.seller_ids is not None:
-        seller_ids = validate_seller_ids(cursor, payload.seller_ids)
-        require_current_agent_assignment(seller_ids, current_user)
-        set_seller_ids(cursor, "budget", budget_id, seller_ids)
-    for item in payload.items:
-        subtotal = item.sale_price * item.quantity
         cursor.execute("""
-            INSERT INTO budget_items (budget_id, service_type, description, supplier_id, client_id, cost_price, sale_price, quantity, subtotal)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
-        """, (budget_id, item.service_type, item.description, item.supplier_id, item.client_id, item.cost_price, item.sale_price, item.quantity, subtotal))
+            UPDATE budgets 
+            SET client_id = ?, title = ?, destination = ?, start_date = ?, end_date = ?, currency = ?, exchange_rate = ?, status = ?, total_cost = ?, total_amount = ?, notes = ?
+            WHERE id = ?;
+        """, (
+            primary_client_id, payload.title, payload.destination, payload.start_date or "",
+            payload.end_date or "", payload.currency or "USD", payload.exchange_rate or 1.0,
+            payload.status or "Borrador", total_cost, total_amount, payload.notes or "", budget_id
+        ))
 
-    if payload.status in ["Convertido", "Convertido a Reserva"]:
-        _convert_budget_to_booking_internal(cursor, budget_id, current_user)
+        cursor.execute("DELETE FROM budget_items WHERE budget_id = ?;", (budget_id,))
+        set_client_ids(cursor, "budget", budget_id, client_ids)
+        if payload.seller_ids is not None:
+            seller_ids = validate_seller_ids(cursor, payload.seller_ids)
+            require_current_agent_assignment(seller_ids, current_user)
+            set_seller_ids(cursor, "budget", budget_id, seller_ids)
+        for item in payload.items:
+            subtotal = item.sale_price * item.quantity
+            cursor.execute("""
+                INSERT INTO budget_items (budget_id, service_type, description, supplier_id, client_id, cost_price, sale_price, quantity, subtotal)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """, (budget_id, item.service_type, item.description, item.supplier_id, item.client_id, item.cost_price, item.sale_price, item.quantity, subtotal))
 
-    conn.commit()
-    conn.close()
+        if payload.status in ["Convertido", "Convertido a Reserva"]:
+            _convert_budget_to_booking_internal(cursor, budget_id, current_user)
+
+        conn.commit()
+    finally:
+        conn.close()
+
     return get_budget(budget_id, current_user)
 
 @router.post("/{budget_id}/convert-to-booking")
