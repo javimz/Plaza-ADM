@@ -4,6 +4,7 @@ from datetime import datetime
 from app.database import get_db_connection
 from app.schemas import BudgetCreate, BudgetOut
 from app.routers.users import get_current_user
+from app.routers.bookings import generate_booking_number
 from app.sales_assignments import (
     get_client_ids,
     get_seller_ids,
@@ -53,7 +54,7 @@ def get_budgets(include_converted: bool = False, current_user: dict = Depends(ge
         LEFT JOIN bookings bk ON bk.id = (
             SELECT id FROM bookings WHERE budget_id = b.id ORDER BY id DESC LIMIT 1
         )
-        WHERE (? != 'agente' OR EXISTS (
+        WHERE (? != 'agente' OR b.user_id = ? OR EXISTS (
             SELECT 1 FROM budget_sellers bs WHERE bs.budget_id = b.id AND bs.user_id = ?
         ))
           AND (? = 1 OR (
@@ -63,7 +64,7 @@ def get_budgets(include_converted: bool = False, current_user: dict = Depends(ge
               )
           ))
         ORDER BY b.id DESC;
-    """, (current_user.get("role"), current_user.get("id"), 1 if include_converted else 0))
+    """, (current_user.get("role"), current_user.get("id"), current_user.get("id"), 1 if include_converted else 0))
     budgets = cursor.fetchall()
     if not budgets:
         conn.close()
@@ -210,6 +211,7 @@ def _convert_budget_to_booking_internal(cursor, budget_id: int, current_user: di
     cursor.execute("SELECT * FROM bookings WHERE budget_id = ? ORDER BY id DESC LIMIT 1;", (budget_id,))
     existing_booking = cursor.fetchone()
     if existing_booking and existing_booking["status"] not in ("En presupuesto", "Presupuesto"):
+        cursor.execute("UPDATE budgets SET status = 'Convertido' WHERE id = ?;", (budget_id,))
         return {
             "message": "Este presupuesto ya tiene una reserva activa.",
             "booking_id": existing_booking["id"],
@@ -252,10 +254,7 @@ def _convert_budget_to_booking_internal(cursor, budget_id: int, current_user: di
             "payments_preserved": True,
         }
 
-    year = datetime.now().year
-    cursor.execute("SELECT COUNT(*) FROM bookings;")
-    b_count = cursor.fetchone()[0] + 1
-    booking_number = f"RES-{year}-{b_count:04d}"
+    booking_number = generate_booking_number(cursor.connection)
     total_cost = float(budget["total_cost"] or 0)
 
     cursor.execute("""
@@ -396,7 +395,7 @@ def revert_to_draft(budget_id: int, current_user: dict = Depends(get_current_use
     require_sales_assignment(cursor, "budget", budget_id, current_user)
 
     cursor.execute("UPDATE budgets SET status = 'Borrador' WHERE id = ?;", (budget_id,))
-    cursor.execute("UPDATE bookings SET status = 'En presupuesto' WHERE budget_id = ?;", (budget_id,))
+    cursor.execute("UPDATE bookings SET status = 'Presupuesto' WHERE budget_id = ?;", (budget_id,))
     conn.commit()
     has_booking_history = cursor.rowcount > 0
     conn.close()

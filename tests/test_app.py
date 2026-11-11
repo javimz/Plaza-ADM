@@ -1128,6 +1128,98 @@ class TestTravelAgencyApp(unittest.TestCase):
         self.assertEqual(p3.status_code, 200, p3.text)
         self.assertNotEqual(p3.json()["payment_number"], p2.json()["payment_number"])
 
+    def test_24_booking_save_and_update_with_items_and_revert(self):
+        # 1. Create a booking directly with items (budget_id is None)
+        booking_payload = {
+            "client_id": 1,
+            "title": "CRUCERO TEST",
+            "destination": "BRASIL",
+            "start_date": "2027-03-07",
+            "end_date": "2027-03-15",
+            "currency": "USD",
+            "status": "Confirmada",
+            "notes": "Generado a partir del presupuesto PRES-2026-0012",
+            "items": [
+                {
+                    "service_type": "Otro",
+                    "description": "MSC 73572967",
+                    "supplier_id": 1,
+                    "cost_price": 4782.0,
+                    "sale_price": 5100.0,
+                    "quantity": 1
+                }
+            ]
+        }
+        res = self.client.post("/api/bookings", json=booking_payload)
+        self.assertEqual(res.status_code, 200, res.text)
+        data = res.json()
+        b_id = data["id"]
+        self.assertEqual(data["title"], "CRUCERO TEST")
+        self.assertEqual(len(data["items"]), 1)
+        self.assertIsNone(data["items"][0]["budget_id"])
+        self.assertEqual(data["total_amount"], 5100.0)
+        self.assertEqual(data["total_cost"], 4782.0)
+
+        # 2. Update the booking with modified items (this previously crashed with 500 Internal Server Error)
+        update_payload = {
+            "client_id": 1,
+            "title": "CRUCERO",
+            "destination": "BRASIL",
+            "start_date": "2027-03-07",
+            "end_date": "",
+            "currency": "USD",
+            "status": "Confirmada",
+            "notes": "Generado a partir del presupuesto PRES-2026-0012",
+            "items": [
+                {
+                    "service_type": "Otro",
+                    "description": "MSC 73572967",
+                    "supplier_id": 1,
+                    "client_id": 1,
+                    "cost_price": 4782.0,
+                    "sale_price": 5100.0,
+                    "quantity": 1
+                }
+            ]
+        }
+        update_res = self.client.put(f"/api/bookings/{b_id}", json=update_payload)
+        self.assertEqual(update_res.status_code, 200, update_res.text)
+        updated_data = update_res.json()
+        self.assertEqual(updated_data["title"], "CRUCERO")
+        self.assertEqual(len(updated_data["items"]), 1)
+        self.assertEqual(updated_data["items"][0]["client_id"], 1)
+
+        # 3. Verify get_bookings lists this booking without schema validation errors
+        list_res = self.client.get("/api/bookings")
+        self.assertEqual(list_res.status_code, 200)
+        matching = [bk for bk in list_res.json() if bk["id"] == b_id]
+        self.assertEqual(len(matching), 1)
+
+        # 4. Convert budget and verify booking_number collision safety
+        b_res = self.client.post("/api/budgets", json={
+            "client_id": 1,
+            "title": "Presupuesto Test Numbering",
+            "destination": "Caribe",
+            "items": [{"service_type": "Vuelo", "description": "Vuelo", "cost_price": 100, "sale_price": 200, "quantity": 1}]
+        })
+        self.assertEqual(b_res.status_code, 200)
+        new_budget_id = b_res.json()["id"]
+
+        conv1 = self.client.post(f"/api/budgets/{new_budget_id}/convert-to-booking")
+        self.assertEqual(conv1.status_code, 200, conv1.text)
+        conv1_data = conv1.json()
+
+        # Re-converting an already converted budget returns the existing active booking and keeps budget Convertido
+        conv2 = self.client.post(f"/api/budgets/{new_budget_id}/convert-to-booking")
+        self.assertEqual(conv2.status_code, 200, conv2.text)
+        self.assertEqual(conv2.json()["booking_id"], conv1_data["booking_id"])
+
+        # Deleting the booking restores the budget to Borrador
+        del_bk = self.client.delete(f"/api/bookings/{conv1_data['booking_id']}")
+        self.assertEqual(del_bk.status_code, 200)
+        budget_after_del = self.client.get(f"/api/budgets/{new_budget_id}")
+        self.assertEqual(budget_after_del.json()["status"], "Borrador")
+
 if __name__ == "__main__":
     unittest.main()
 

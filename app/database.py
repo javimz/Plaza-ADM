@@ -95,7 +95,7 @@ def init_db():
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS budget_items (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        budget_id INTEGER NOT NULL,
+        budget_id INTEGER,
         service_type TEXT NOT NULL,
         description TEXT NOT NULL,
         supplier_id INTEGER,
@@ -246,13 +246,47 @@ def init_db():
         cursor.execute("ALTER TABLE payments ADD COLUMN concept TEXT;")
 
     cursor.execute("PRAGMA table_info(budget_items);")
-    budget_item_columns = {row["name"] for row in cursor.fetchall()}
+    budget_item_cols_info = cursor.fetchall()
+    budget_item_columns = {row["name"] for row in budget_item_cols_info}
     if "client_id" not in budget_item_columns:
         cursor.execute("ALTER TABLE budget_items ADD COLUMN client_id INTEGER REFERENCES clients(id);")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_budget_items_client ON budget_items(client_id);")
     if "booking_id" not in budget_item_columns:
         cursor.execute("ALTER TABLE budget_items ADD COLUMN booking_id INTEGER REFERENCES bookings(id) ON DELETE CASCADE;")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_budget_items_booking_id ON budget_items(booking_id);")
+
+    # Migrate budget_items if budget_id is NOT NULL
+    for col in budget_item_cols_info:
+        if col["name"] == "budget_id" and col["notnull"] == 1:
+            cursor.execute("""
+                CREATE TABLE budget_items_temp (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    budget_id INTEGER,
+                    booking_id INTEGER,
+                    service_type TEXT NOT NULL,
+                    description TEXT NOT NULL,
+                    supplier_id INTEGER,
+                    client_id INTEGER,
+                    cost_price REAL NOT NULL DEFAULT 0.0,
+                    sale_price REAL NOT NULL DEFAULT 0.0,
+                    quantity INTEGER NOT NULL DEFAULT 1,
+                    subtotal REAL NOT NULL DEFAULT 0.0,
+                    FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE,
+                    FOREIGN KEY(supplier_id) REFERENCES suppliers(id),
+                    FOREIGN KEY(client_id) REFERENCES clients(id),
+                    FOREIGN KEY(booking_id) REFERENCES bookings(id) ON DELETE CASCADE
+                );
+            """)
+            cursor.execute("""
+                INSERT INTO budget_items_temp (id, budget_id, booking_id, service_type, description, supplier_id, client_id, cost_price, sale_price, quantity, subtotal)
+                SELECT id, budget_id, booking_id, service_type, description, supplier_id, client_id, cost_price, sale_price, quantity, subtotal
+                FROM budget_items;
+            """)
+            cursor.execute("DROP TABLE budget_items;")
+            cursor.execute("ALTER TABLE budget_items_temp RENAME TO budget_items;")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_budget_items_client ON budget_items(client_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_budget_items_booking_id ON budget_items(booking_id);")
+            break
 
     cursor.execute("PRAGMA table_info(bookings);")
     booking_columns = {row["name"] for row in cursor.fetchall()}

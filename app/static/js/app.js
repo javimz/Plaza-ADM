@@ -1600,8 +1600,15 @@ function renderBookingsTable() {
     const tbody = document.getElementById('bookings-table-body');
     if (!tbody) return;
 
+    const isBudgetStatus = (st) => {
+        const s = (st || '').toLowerCase().trim();
+        return s === 'presupuesto' || s === 'borrador' || s === 'en presupuesto';
+    };
+
     let list = bookingsCache || [];
-    if (currentBookingStatusFilter !== 'all') {
+    if (currentBookingStatusFilter.toLowerCase() === 'presupuesto') {
+        list = list.filter(b => isBudgetStatus(b.status));
+    } else if (currentBookingStatusFilter !== 'all') {
         list = list.filter(b => (b.status || '').toLowerCase() === currentBookingStatusFilter.toLowerCase());
     }
 
@@ -1612,8 +1619,8 @@ function renderBookingsTable() {
     }
 
     const statusBadge = (st) => {
-        const s = (st || 'Confirmada').toLowerCase();
-        if (s === 'presupuesto' || s === 'borrador') {
+        const s = (st || 'Confirmada').toLowerCase().trim();
+        if (isBudgetStatus(s)) {
             return `<span class="px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">Presupuesto</span>`;
         }
         if (s === 'confirmada' || s === 'aprobado') {
@@ -1632,7 +1639,7 @@ function renderBookingsTable() {
     };
 
     tbody.innerHTML = list.map(b => {
-        const isBudget = (b.status || '').toLowerCase() === 'presupuesto';
+        const isBudget = isBudgetStatus(b.status);
         const progress = b.total_amount > 0 ? Math.min(100, Math.round((b.paid_amount / b.total_amount) * 100)) : 0;
         const sellers = (b.seller_names || []).join(', ');
         const dates = (b.start_date || b.end_date) ? `${b.start_date || 'TBD'} al ${b.end_date || 'TBD'}` : '-';

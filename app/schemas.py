@@ -86,10 +86,13 @@ class BudgetItemCreate(BudgetItemBase):
 
 class BudgetItemOut(BudgetItemBase):
     id: int
-    budget_id: int
-    subtotal: float
+    budget_id: Optional[int] = None
+    booking_id: Optional[int] = None
+    subtotal: Optional[float] = 0.0
     supplier_name: Optional[str] = None
     client_name: Optional[str] = None
+    paid_cost: Optional[float] = 0.0
+    cost_balance: Optional[float] = 0.0
 
 # Budget Schemas
 class BudgetBase(BaseModel):
@@ -121,24 +124,24 @@ class BudgetOut(BudgetBase):
     user_id: int
     user_name: Optional[str] = None
     client_name: Optional[str] = None
-    total_cost: float
-    total_amount: float
+    total_cost: Optional[float] = 0.0
+    total_amount: Optional[float] = 0.0
     items: List[BudgetItemOut] = []
-    created_at: str
+    created_at: Optional[str] = None
 
 # Booking Schemas
 class BookingBase(BaseModel):
     client_id: Optional[int] = None
     client_ids: Optional[List[int]] = None
-    title: str
-    destination: str
+    title: Optional[str] = ""
+    destination: Optional[str] = ""
     start_date: Optional[str] = ""
     end_date: Optional[str] = ""
-    currency: str = "USD"
-    exchange_rate: float = 1.0
-    status: str = "Presupuesto"
-    total_amount: float = 0.0
-    total_cost: float = 0.0
+    currency: Optional[str] = "USD"
+    exchange_rate: Optional[float] = 1.0
+    status: Optional[str] = "Confirmada"
+    total_amount: Optional[float] = 0.0
+    total_cost: Optional[float] = 0.0
     notes: Optional[str] = ""
 
 class BookingCreate(BookingBase):
@@ -160,24 +163,24 @@ class BookingOut(BookingBase):
     client_id: Optional[int] = None
     client_ids: List[int] = []
     client_names: List[str] = []
-    user_id: int
+    user_id: Optional[int] = None
     client_name: Optional[str] = None
     user_name: Optional[str] = None
-    title: str
-    destination: str
+    title: Optional[str] = ""
+    destination: Optional[str] = ""
     start_date: Optional[str] = ""
     end_date: Optional[str] = ""
-    currency: str
-    status: str
-    total_amount: float
-    paid_amount: float
-    balance_due: float
-    total_cost: float = 0.0
-    supplier_paid_amount: float = 0.0
-    cost_balance: float = 0.0
+    currency: Optional[str] = "USD"
+    status: Optional[str] = "Confirmada"
+    total_amount: Optional[float] = 0.0
+    paid_amount: Optional[float] = 0.0
+    balance_due: Optional[float] = 0.0
+    total_cost: Optional[float] = 0.0
+    supplier_paid_amount: Optional[float] = 0.0
+    cost_balance: Optional[float] = 0.0
     items: List[BudgetItemOut] = []
     notes: Optional[str] = ""
-    created_at: str
+    created_at: Optional[str] = None
 
 # Payment Schemas
 class PaymentCreate(BaseModel):

@@ -45,7 +45,7 @@ def get_bookings(status: Optional[str] = None, current_user: dict = Depends(get_
     try:
         cursor = conn.cursor()
         status_filter = "AND bk.status = ?" if status else ""
-        query_params = [current_user.get("role"), current_user.get("id")]
+        query_params = [current_user.get("role"), current_user.get("id"), current_user.get("id")]
         if status:
             query_params.append(status)
 
@@ -71,7 +71,7 @@ def get_bookings(status: Optional[str] = None, current_user: dict = Depends(get_
             LEFT JOIN clients c ON bk.client_id = c.id
             LEFT JOIN users u ON bk.user_id = u.id
             LEFT JOIN budgets b ON b.id = bk.budget_id
-            WHERE (? != 'agente' OR EXISTS (
+            WHERE (? != 'agente' OR bk.user_id = ? OR EXISTS (
                 SELECT 1 FROM booking_sellers bs WHERE bs.booking_id = bk.id AND bs.user_id = ?
             ))
             {status_filter}
@@ -339,11 +339,11 @@ def create_booking(payload: BookingCreate, current_user: dict = Depends(get_curr
             subtotal = item.sale_price * item.quantity
             cursor.execute("""
                 INSERT INTO budget_items (
-                    booking_id, service_type, description, supplier_id, client_id,
+                    booking_id, budget_id, service_type, description, supplier_id, client_id,
                     cost_price, sale_price, quantity, subtotal
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """, (
-                booking_id, item.service_type, item.description, item.supplier_id,
+                booking_id, payload.budget_id, item.service_type, item.description, item.supplier_id,
                 item.client_id, item.cost_price, item.sale_price, item.quantity, subtotal
             ))
         conn.commit()
@@ -392,16 +392,17 @@ def update_booking(booking_id: int, payload: BookingUpdate, current_user: dict =
             set_seller_ids(cursor, "booking", booking_id, seller_ids)
 
         if payload.items is not None:
+            budget_id_val = existing["budget_id"] if existing["budget_id"] else None
             cursor.execute("DELETE FROM budget_items WHERE booking_id = ?;", (booking_id,))
             for item in payload.items:
                 subtotal = item.sale_price * item.quantity
                 cursor.execute("""
                     INSERT INTO budget_items (
-                        booking_id, service_type, description, supplier_id, client_id,
+                        booking_id, budget_id, service_type, description, supplier_id, client_id,
                         cost_price, sale_price, quantity, subtotal
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
                 """, (
-                    booking_id, item.service_type, item.description, item.supplier_id,
+                    booking_id, budget_id_val, item.service_type, item.description, item.supplier_id,
                     item.client_id, item.cost_price, item.sale_price, item.quantity, subtotal
                 ))
 
@@ -457,10 +458,14 @@ def delete_booking(booking_id: int, current_user: dict = Depends(get_current_use
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT id FROM bookings WHERE id = ?;", (booking_id,))
-        if not cursor.fetchone():
+        cursor.execute("SELECT id, budget_id FROM bookings WHERE id = ?;", (booking_id,))
+        existing = cursor.fetchone()
+        if not existing:
             raise HTTPException(status_code=404, detail="Reserva no encontrada")
         require_sales_assignment(cursor, "booking", booking_id, current_user)
+
+        if existing["budget_id"]:
+            cursor.execute("UPDATE budgets SET status = 'Borrador' WHERE id = ?;", (existing["budget_id"],))
 
         cursor.execute("""
             DELETE FROM supplier_payments
