@@ -210,9 +210,9 @@ class PaymentOut(BaseModel):
     payment_date: str
     payment_method: str
     concept: Optional[str] = ""
-    payment_type: str
+    payment_type: Optional[str] = "Parcial"
     reference_code: Optional[str] = None
     notes: Optional[str] = None
-    registered_by_user_id: int
+    registered_by_user_id: Optional[int] = None
     registered_by_user_name: Optional[str] = None
-    created_at: str
+    created_at: Optional[str] = None

@@ -196,26 +196,27 @@ async function apiFetch(url, method = 'GET', body = null) {
 
     try {
         const response = await fetch(fullUrl, config);
+        const rawText = await response.text().catch(() => '');
+
         if (!response.ok) {
             let errorMsg = '';
-            try {
-                const errData = await response.json();
-                if (typeof errData.detail === 'string') {
-                    errorMsg = errData.detail;
-                } else if (Array.isArray(errData.detail)) {
-                    errorMsg = errData.detail.map(e => e.msg || JSON.stringify(e)).join('; ');
-                } else if (errData.message) {
-                    errorMsg = errData.message;
-                } else if (errData.error) {
-                    errorMsg = errData.error;
-                }
-            } catch (e) {
+            if (rawText) {
                 try {
-                    const text = await response.text();
-                    if (text && text.length < 200 && !text.includes('<html')) {
-                        errorMsg = text;
+                    const errData = JSON.parse(rawText);
+                    if (typeof errData.detail === 'string') {
+                        errorMsg = errData.detail;
+                    } else if (Array.isArray(errData.detail)) {
+                        errorMsg = errData.detail.map(e => (typeof e === 'string' ? e : (e.msg || JSON.stringify(e)))).join('; ');
+                    } else if (errData.message) {
+                        errorMsg = errData.message;
+                    } else if (errData.error) {
+                        errorMsg = errData.error;
                     }
-                } catch(e2) {}
+                } catch (e) {
+                    if (rawText.length < 300 && !rawText.includes('<html')) {
+                        errorMsg = rawText.trim();
+                    }
+                }
             }
 
             if (response.status === 401 && token) {
@@ -231,7 +232,13 @@ async function apiFetch(url, method = 'GET', body = null) {
             }
             throw new Error(errorMsg);
         }
-        return await response.json();
+
+        if (!rawText) return null;
+        try {
+            return JSON.parse(rawText);
+        } catch (e) {
+            return rawText;
+        }
     } catch (err) {
         if (err.message !== 'Sesión expirada') alert('Error: ' + err.message);
         throw err;

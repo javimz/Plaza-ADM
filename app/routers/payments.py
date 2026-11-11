@@ -16,9 +16,12 @@ def generate_payment_number(conn):
     max_num = 0
     for row in cursor.fetchall():
         pnum = row[0]
-        existing.add(pnum)
+        if not pnum:
+            continue
+        pnum_str = str(pnum).strip()
+        existing.add(pnum_str)
         try:
-            val = int(pnum.split("-")[-1])
+            val = int(pnum_str.split("-")[-1])
             if val > max_num:
                 max_num = val
         except (ValueError, IndexError):
@@ -110,13 +113,26 @@ def register_payment(payload: PaymentCreate, current_user: dict = Depends(get_cu
         conn.close()
         raise HTTPException(status_code=400, detail="El monto del pago debe ser mayor a 0")
 
-    balance_due = booking["balance_due"]
+    balance_due = float(booking["balance_due"] if booking["balance_due"] is not None else 0.0)
+    total_amount = float(booking["total_amount"] if booking["total_amount"] is not None else 0.0)
+    paid_amount = float(booking["paid_amount"] if booking["paid_amount"] is not None else 0.0)
+
     if payload.amount > balance_due + 0.01:
         conn.close()
         raise HTTPException(status_code=400, detail=f"El monto ({payload.amount:.2f}) supera el saldo restante de la reserva ({balance_due:.2f})")
 
-    payment_number = generate_payment_number(conn)
-    user_id = current_user.get("id", 1)
+    # Resolve safe user_id
+    user_id = current_user.get("id")
+    if user_id:
+        cursor.execute("SELECT id FROM users WHERE id = ?;", (user_id,))
+        if not cursor.fetchone():
+            user_id = None
+    if not user_id:
+        cursor.execute("SELECT id FROM users WHERE role = 'admin' LIMIT 1;")
+        u_row = cursor.fetchone()
+        user_id = u_row[0] if u_row else 1
+
+    # Resolve safe client_id
     client_id = payload.client_id or booking["client_id"]
     if not client_id:
         cursor.execute("SELECT client_id FROM booking_clients WHERE booking_id = ? ORDER BY client_id LIMIT 1;", (payload.booking_id,))
@@ -137,34 +153,54 @@ def register_payment(payload: PaymentCreate, current_user: dict = Depends(get_cu
             conn.close()
             raise HTTPException(status_code=400, detail="No se encontró un cliente asociado a esta reserva para registrar el pago.")
 
+    # Ensure client_id exists in clients table
+    cursor.execute("SELECT id FROM clients WHERE id = ?;", (client_id,))
+    if not cursor.fetchone():
+        cursor.execute("SELECT id FROM clients ORDER BY id LIMIT 1;")
+        c_exist = cursor.fetchone()
+        if c_exist:
+            client_id = c_exist[0]
+
     if not booking["client_id"] and client_id:
         cursor.execute("UPDATE bookings SET client_id = ? WHERE id = ? AND client_id IS NULL;", (client_id, payload.booking_id))
 
-    new_paid = booking["paid_amount"] + payload.amount
-    new_balance = max(0.0, booking["total_amount"] - new_paid)
+    new_paid = round(paid_amount + payload.amount, 2)
+    new_balance = max(0.0, round(total_amount - new_paid, 2))
     payment_type = "Total" if new_balance <= 0.01 else "Parcial"
 
-    try:
-        cursor.execute("""
-            INSERT INTO payments (payment_number, booking_id, client_id, amount, payment_date, payment_method, concept, payment_type, reference_code, notes, registered_by_user_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-        """, (
-            payment_number, payload.booking_id, client_id, payload.amount,
-            payload.payment_date, payload.payment_method, payload.concept or "", payment_type,
-            payload.reference_code or "", payload.notes or "", user_id
-        ))
-        payment_id = cursor.lastrowid
+    inserted = False
+    last_error = None
+    payment_id = None
 
-        # Update booking balances
-        cursor.execute("""
-            UPDATE bookings SET paid_amount = ?, balance_due = ? WHERE id = ?;
-        """, (new_paid, new_balance, payload.booking_id))
+    for _ in range(5):
+        payment_number = generate_payment_number(conn)
+        try:
+            cursor.execute("""
+                INSERT INTO payments (payment_number, booking_id, client_id, amount, payment_date, payment_method, concept, payment_type, reference_code, notes, registered_by_user_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """, (
+                payment_number, payload.booking_id, client_id, payload.amount,
+                payload.payment_date, payload.payment_method, payload.concept or "", payment_type,
+                payload.reference_code or "", payload.notes or "", user_id
+            ))
+            payment_id = cursor.lastrowid
 
-        conn.commit()
-    except Exception as exc:
-        conn.rollback()
+            # Update booking balances
+            cursor.execute("""
+                UPDATE bookings SET paid_amount = ?, balance_due = ? WHERE id = ?;
+            """, (new_paid, new_balance, payload.booking_id))
+
+            conn.commit()
+            inserted = True
+            break
+        except Exception as exc:
+            conn.rollback()
+            last_error = exc
+            continue
+
+    if not inserted:
         conn.close()
-        raise HTTPException(status_code=500, detail=f"Error al registrar pago en base de datos: {exc}")
+        raise HTTPException(status_code=500, detail=f"Error al registrar pago en base de datos: {last_error}")
 
     cursor.execute("""
         SELECT p.*, bk.booking_number, c.name as client_name, u.full_name as registered_by_user_name
@@ -177,7 +213,13 @@ def register_payment(payload: PaymentCreate, current_user: dict = Depends(get_cu
     payment = cursor.fetchone()
     conn.close()
 
-    return dict(payment)
+    if not payment:
+        raise HTTPException(status_code=500, detail="Error al recuperar el pago recién registrado.")
+
+    p_dict = dict(payment)
+    if not p_dict.get("created_at"):
+        p_dict["created_at"] = datetime.now().isoformat()
+    return p_dict
 
 @router.put("/{payment_id}", response_model=PaymentOut)
 def update_payment(payment_id: int, payload: PaymentUpdate, current_user: dict = Depends(get_current_user)):

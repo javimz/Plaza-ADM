@@ -57,17 +57,17 @@ async def audit_api_changes(request: Request, call_next):
         response = await call_next(request)
         return response
     finally:
-        authorization = request.headers.get("authorization", "")
-        token = authorization[7:] if authorization.startswith("Bearer ") else ""
-        actor = decode_access_token(token) if token else None
-        status_code = response.status_code if response is not None else 500
-        action = _describe_api_change(method, path)
-        result = "Completado" if status_code < 400 else f"Solicitud rechazada (HTTP {status_code})"
-        if response is not None and status_code < 400 and method in {"POST", "PUT", "PATCH"}:
-            changed_values = _describe_request_values(captured_body, request.headers.get("content-type", ""))
-            if changed_values:
-                result = f"{result}. {changed_values}"
         try:
+            authorization = request.headers.get("authorization", "")
+            token = authorization[7:] if authorization.startswith("Bearer ") else ""
+            actor = decode_access_token(token) if token else None
+            status_code = response.status_code if response is not None else 500
+            action = _describe_api_change(method, path)
+            result = "Completado" if status_code < 400 else f"Solicitud rechazada (HTTP {status_code})"
+            if response is not None and status_code < 400 and method in {"POST", "PUT", "PATCH"}:
+                changed_values = _describe_request_values(captured_body, request.headers.get("content-type", ""))
+                if changed_values:
+                    result = f"{result}. {changed_values}"
             record_activity(action, method, path, status_code, user=actor,
                             details=result)
         except Exception:
