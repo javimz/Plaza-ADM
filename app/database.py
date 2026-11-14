@@ -101,6 +101,7 @@ def init_db():
         supplier_id INTEGER,
         client_id INTEGER,
         cost_price REAL NOT NULL DEFAULT 0.0,
+        gs_adm REAL NOT NULL DEFAULT 0.0,
         sale_price REAL NOT NULL DEFAULT 0.0,
         quantity INTEGER NOT NULL DEFAULT 1,
         subtotal REAL NOT NULL DEFAULT 0.0,
@@ -254,6 +255,8 @@ def init_db():
     if "booking_id" not in budget_item_columns:
         cursor.execute("ALTER TABLE budget_items ADD COLUMN booking_id INTEGER REFERENCES bookings(id) ON DELETE CASCADE;")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_budget_items_booking_id ON budget_items(booking_id);")
+    if "gs_adm" not in budget_item_columns:
+        cursor.execute("ALTER TABLE budget_items ADD COLUMN gs_adm REAL NOT NULL DEFAULT 0.0;")
 
     # Migrate budget_items if budget_id is NOT NULL
     for col in budget_item_cols_info:

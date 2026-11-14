@@ -78,6 +78,7 @@ class BudgetItemBase(BaseModel):
     supplier_id: Optional[int] = None
     client_id: Optional[int] = None
     cost_price: float = 0.0
+    gs_adm: float = 0.0
     sale_price: float = 0.0
     quantity: int = 1
 

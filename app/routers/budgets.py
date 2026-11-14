@@ -289,7 +289,7 @@ def create_budget(payload: BudgetCreate, current_user: dict = Depends(get_curren
     client_ids = validate_client_ids(cursor, raw_client_ids)
     primary_client_id = client_ids[0]
 
-    total_cost = sum(item.cost_price * item.quantity for item in payload.items)
+    total_cost = sum((item.cost_price + (item.gs_adm or 0.0)) * item.quantity for item in payload.items)
     total_amount = sum(item.sale_price * item.quantity for item in payload.items)
 
     cursor.execute("""
@@ -308,9 +308,9 @@ def create_budget(payload: BudgetCreate, current_user: dict = Depends(get_curren
     for item in payload.items:
         subtotal = item.sale_price * item.quantity
         cursor.execute("""
-            INSERT INTO budget_items (budget_id, service_type, description, supplier_id, client_id, cost_price, sale_price, quantity, subtotal)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
-        """, (budget_id, item.service_type, item.description, item.supplier_id, item.client_id, item.cost_price, item.sale_price, item.quantity, subtotal))
+            INSERT INTO budget_items (budget_id, service_type, description, supplier_id, client_id, cost_price, gs_adm, sale_price, quantity, subtotal)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+        """, (budget_id, item.service_type, item.description, item.supplier_id, item.client_id, item.cost_price, item.gs_adm or 0.0, item.sale_price, item.quantity, subtotal))
 
     if payload.status in ["Convertido", "Convertido a Reserva"]:
         _convert_budget_to_booking_internal(cursor, budget_id, current_user)
@@ -337,7 +337,7 @@ def update_budget(budget_id: int, payload: BudgetCreate, current_user: dict = De
         client_ids = validate_client_ids(cursor, raw_client_ids)
         primary_client_id = client_ids[0]
 
-        total_cost = sum(item.cost_price * item.quantity for item in payload.items)
+        total_cost = sum((item.cost_price + (item.gs_adm or 0.0)) * item.quantity for item in payload.items)
         total_amount = sum(item.sale_price * item.quantity for item in payload.items)
 
         cursor.execute("""
@@ -359,9 +359,9 @@ def update_budget(budget_id: int, payload: BudgetCreate, current_user: dict = De
         for item in payload.items:
             subtotal = item.sale_price * item.quantity
             cursor.execute("""
-                INSERT INTO budget_items (budget_id, service_type, description, supplier_id, client_id, cost_price, sale_price, quantity, subtotal)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
-            """, (budget_id, item.service_type, item.description, item.supplier_id, item.client_id, item.cost_price, item.sale_price, item.quantity, subtotal))
+                INSERT INTO budget_items (budget_id, service_type, description, supplier_id, client_id, cost_price, gs_adm, sale_price, quantity, subtotal)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """, (budget_id, item.service_type, item.description, item.supplier_id, item.client_id, item.cost_price, item.gs_adm or 0.0, item.sale_price, item.quantity, subtotal))
 
         if payload.status in ["Convertido", "Convertido a Reserva"]:
             _convert_budget_to_booking_internal(cursor, budget_id, current_user)

@@ -1220,6 +1220,89 @@ class TestTravelAgencyApp(unittest.TestCase):
         budget_after_del = self.client.get(f"/api/budgets/{new_budget_id}")
         self.assertEqual(budget_after_del.json()["status"], "Borrador")
 
+    def test_25_gs_adm_and_total_cost(self):
+        ventas = next(user for user in self.client.get("/api/users").json() if user["role"] == "ventas")
+        # Test creation of booking with gs_adm
+        payload = {
+            "client_ids": [1],
+            "seller_ids": [ventas["id"]],
+            "title": "Viaje con GS ADM",
+            "destination": "Madrid",
+            "departure_date": "2027-01-10",
+            "return_date": "2027-01-20",
+            "currency": "USD",
+            "status": "Confirmada",
+            "items": [
+                {
+                    "service_type": "Vuelo",
+                    "description": "Vuelo aéreo",
+                    "client_id": 1,
+                    "supplier_id": 1,
+                    "cost_price": 500.0,
+                    "gs_adm": 50.0,
+                    "sale_price": 700.0,
+                    "quantity": 2
+                },
+                {
+                    "service_type": "Hotel",
+                    "description": "Hotel Central",
+                    "client_id": 1,
+                    "supplier_id": 1,
+                    "cost_price": 300.0,
+                    "gs_adm": 20.0,
+                    "sale_price": 400.0,
+                    "quantity": 1
+                }
+            ]
+        }
+        res = self.client.post("/api/bookings", json=payload)
+        self.assertEqual(res.status_code, 200, res.text)
+        b_data = res.json()
+        b_id = b_data["id"]
+
+        # Expected total cost: (500 + 50) * 2 + (300 + 20) * 1 = 1100 + 320 = 1420.0
+        # Expected total sale: 700 * 2 + 400 * 1 = 1800.0
+        self.assertEqual(b_data["total_cost"], 1420.0)
+        self.assertEqual(b_data["total_amount"], 1800.0)
+        self.assertEqual(b_data["items"][0]["gs_adm"], 50.0)
+        self.assertEqual(b_data["items"][1]["gs_adm"], 20.0)
+
+        # Verify get_booking
+        get_res = self.client.get(f"/api/bookings/{b_id}")
+        self.assertEqual(get_res.status_code, 200)
+        get_data = get_res.json()
+        self.assertEqual(get_data["total_cost"], 1420.0)
+        self.assertEqual(get_data["items"][0]["gs_adm"], 50.0)
+
+        # Verify get_bookings summary
+        list_res = self.client.get("/api/bookings")
+        self.assertEqual(list_res.status_code, 200)
+        item_match = next((b for b in list_res.json() if b["id"] == b_id), None)
+        self.assertIsNotNone(item_match)
+        self.assertEqual(item_match["total_cost"], 1420.0)
+
+        # Verify budget with gs_adm
+        budget_payload = {
+            "client_id": 1,
+            "title": "Presupuesto GS ADM",
+            "destination": "Paris",
+            "items": [
+                {
+                    "service_type": "Alojamiento",
+                    "description": "Hotel París",
+                    "cost_price": 400.0,
+                    "gs_adm": 40.0,
+                    "sale_price": 600.0,
+                    "quantity": 1
+                }
+            ]
+        }
+        b_res = self.client.post("/api/budgets", json=budget_payload)
+        self.assertEqual(b_res.status_code, 200, b_res.text)
+        budget_data = b_res.json()
+        self.assertEqual(budget_data["total_cost"], 440.0)
+        self.assertEqual(budget_data["items"][0]["gs_adm"], 40.0)
+
 if __name__ == "__main__":
     unittest.main()
 

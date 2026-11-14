@@ -382,6 +382,12 @@ function setupBudgetSearchInputs() {
         if (!e.target.closest('#budget-seller-search') && !e.target.closest('#budget-seller-dropdown')) {
             hideBudgetDropdown('budget-seller-dropdown');
         }
+        if (!e.target.closest('.item-client-container')) {
+            document.querySelectorAll('.item-client-dropdown').forEach(d => d.classList.add('hidden'));
+        }
+        if (!e.target.closest('.item-supplier-container')) {
+            document.querySelectorAll('.item-supplier-dropdown').forEach(d => d.classList.add('hidden'));
+        }
     });
 }
 
@@ -483,11 +489,21 @@ function getBudgetItemClientOptionsHtml(selectedClientId = null) {
 }
 
 function updateBudgetItemClientSelectors() {
-    const clientSelects = document.querySelectorAll('#budget-items-container .item-client');
-    clientSelects.forEach(select => {
-        const currentVal = select.value ? parseInt(select.value) : null;
-        select.innerHTML = getBudgetItemClientOptionsHtml(currentVal);
-    });
+    if (budgetSelectedClientIds.length === 1) {
+        const singleId = budgetSelectedClientIds[0];
+        const client = clientsCache.find(c => c.id === singleId);
+        if (client) {
+            const containers = document.querySelectorAll('#budget-items-container .item-client-container');
+            containers.forEach(cont => {
+                const hidden = cont.querySelector('.item-client');
+                const search = cont.querySelector('.item-client-search');
+                if (hidden && !hidden.value) {
+                    hidden.value = singleId;
+                    if (search) search.value = client.name;
+                }
+            });
+        }
+    }
 }
 
 function handleBudgetSellerSearch(query) {
@@ -552,6 +568,137 @@ function renderBudgetSelectedSellers() {
             </span>
         `;
     }).join('');
+}
+
+function handleItemClientInput(input) {
+    const container = input.closest('.item-client-container');
+    if (!container) return;
+    const dropdown = container.querySelector('.item-client-dropdown');
+    const hidden = container.querySelector('.item-client');
+    const query = input.value.trim().toLowerCase();
+
+    if (!query) {
+        hidden.value = '';
+        dropdown.classList.add('hidden');
+        return;
+    }
+
+    if (query.length < 3) {
+        dropdown.innerHTML = `<div class="p-2.5 text-xs text-slate-400 text-center">Escriba al menos 3 caracteres...</div>`;
+        dropdown.classList.remove('hidden');
+        return;
+    }
+
+    if (!clientsCache.length) loadClientsCache();
+    const matches = clientsCache.filter(c => 
+        (c.name && c.name.toLowerCase().includes(query)) ||
+        (c.document_id && c.document_id.toLowerCase().includes(query)) ||
+        (c.email && c.email.toLowerCase().includes(query))
+    );
+
+    if (!matches.length) {
+        dropdown.innerHTML = `<div class="p-2.5 text-xs text-slate-400 text-center">No se encontraron clientes</div>`;
+        dropdown.classList.remove('hidden');
+        return;
+    }
+
+    dropdown.innerHTML = matches.slice(0, 20).map(c => `
+        <div onclick="selectItemClient(this, ${c.id}, '${escapeProfitText(c.name).replace(/'/g, "\\'")}')" class="p-2.5 hover:bg-blue-50 cursor-pointer flex items-center justify-between text-xs transition">
+            <div>
+                <span class="font-bold text-slate-800">${escapeProfitText(c.name)}</span>
+                ${c.document_id ? `<span class="text-slate-500 ml-1">(${escapeProfitText(c.document_id)})</span>` : ''}
+            </div>
+            <span class="text-xs text-blue-600 font-semibold">+ Elegir</span>
+        </div>
+    `).join('');
+    dropdown.classList.remove('hidden');
+}
+
+function handleItemClientFocus(input) {
+    const val = input.value.trim();
+    if (val.length >= 3) {
+        handleItemClientInput(input);
+    }
+}
+
+function selectItemClient(el, clientId, clientName) {
+    const container = el.closest('.item-client-container');
+    if (!container) return;
+    const hidden = container.querySelector('.item-client');
+    const searchInput = container.querySelector('.item-client-search');
+    const dropdown = container.querySelector('.item-client-dropdown');
+
+    hidden.value = clientId;
+    searchInput.value = clientName;
+    dropdown.classList.add('hidden');
+
+    if (clientId && !budgetSelectedClientIds.includes(clientId)) {
+        budgetSelectedClientIds.push(clientId);
+        renderBudgetSelectedClients();
+    }
+}
+
+function handleItemSupplierInput(input) {
+    const container = input.closest('.item-supplier-container');
+    if (!container) return;
+    const dropdown = container.querySelector('.item-supplier-dropdown');
+    const hidden = container.querySelector('.item-supplier');
+    const query = input.value.trim().toLowerCase();
+
+    if (!query) {
+        hidden.value = '';
+        dropdown.classList.add('hidden');
+        return;
+    }
+
+    if (query.length < 3) {
+        dropdown.innerHTML = `<div class="p-2.5 text-xs text-slate-400 text-center">Escriba al menos 3 caracteres...</div>`;
+        dropdown.classList.remove('hidden');
+        return;
+    }
+
+    if (!suppliersCache.length) loadSuppliersCache();
+    const matches = suppliersCache.filter(s => 
+        (s.name && s.name.toLowerCase().includes(query)) ||
+        (s.category && s.category.toLowerCase().includes(query)) ||
+        (s.cuit && s.cuit.toLowerCase().includes(query))
+    );
+
+    if (!matches.length) {
+        dropdown.innerHTML = `<div class="p-2.5 text-xs text-slate-400 text-center">No se encontraron proveedores</div>`;
+        dropdown.classList.remove('hidden');
+        return;
+    }
+
+    dropdown.innerHTML = matches.slice(0, 20).map(s => `
+        <div onclick="selectItemSupplier(this, ${s.id}, '${escapeProfitText(s.name).replace(/'/g, "\\'")}')" class="p-2.5 hover:bg-blue-50 cursor-pointer flex items-center justify-between text-xs transition">
+            <div>
+                <span class="font-bold text-slate-800">${escapeProfitText(s.name)}</span>
+                ${s.category ? `<span class="text-slate-500 ml-1">(${escapeProfitText(s.category)})</span>` : ''}
+            </div>
+            <span class="text-xs text-blue-600 font-semibold">+ Elegir</span>
+        </div>
+    `).join('');
+    dropdown.classList.remove('hidden');
+}
+
+function handleItemSupplierFocus(input) {
+    const val = input.value.trim();
+    if (val.length >= 3) {
+        handleItemSupplierInput(input);
+    }
+}
+
+function selectItemSupplier(el, supplierId, supplierName) {
+    const container = el.closest('.item-supplier-container');
+    if (!container) return;
+    const hidden = container.querySelector('.item-supplier');
+    const searchInput = container.querySelector('.item-supplier-search');
+    const dropdown = container.querySelector('.item-supplier-dropdown');
+
+    hidden.value = supplierId;
+    searchInput.value = supplierName;
+    dropdown.classList.add('hidden');
 }
 
 function canManageSupplierPayables() {
@@ -1737,6 +1884,8 @@ async function openNewBookingModal() {
 
         if (!salespeopleCache.length) await loadSalespeopleCache();
         if (!clientsCache.length) await loadClientsCache();
+        if (!suppliersCache.length) await loadSuppliersCache();
+        if (!suppliersCache.length) await loadSuppliersCache();
 
         budgetSelectedClientIds = [];
         renderBudgetSelectedClients();
@@ -1763,18 +1912,35 @@ function addBudgetItemRow(item = {}) {
     const container = document.getElementById('budget-items-container');
     const rowId = 'item-row-' + Date.now() + '-' + Math.floor(Math.random()*1000);
 
-    const suppliersOpts = suppliersCache.map(s => `<option value="${s.id}" ${item.supplier_id === s.id ? 'selected' : ''}>${escapeProfitText(s.name)}</option>`).join('');
-    const clientOpts = getBudgetItemClientOptionsHtml(item.client_id);
+    let defaultClientId = item.client_id;
+    let defaultClientName = '';
+    if (!defaultClientId && budgetSelectedClientIds.length === 1) {
+        defaultClientId = budgetSelectedClientIds[0];
+    }
+    if (defaultClientId) {
+        const found = clientsCache.find(c => c.id === Number(defaultClientId));
+        defaultClientName = found ? found.name : (item.client_name || '');
+    }
+
+    let defaultSupplierId = item.supplier_id || '';
+    let defaultSupplierName = '';
+    if (defaultSupplierId) {
+        const foundSupp = suppliersCache.find(s => s.id === Number(defaultSupplierId));
+        defaultSupplierName = foundSupp ? foundSupp.name : (item.supplier_name || '');
+    }
 
     const costVal = (item.cost_price !== undefined && item.cost_price !== null && item.cost_price !== '') 
         ? formatCurrencyInput(item.cost_price)
+        : '';
+    const gsAdmVal = (item.gs_adm !== undefined && item.gs_adm !== null && item.gs_adm !== '') 
+        ? formatCurrencyInput(item.gs_adm)
         : '';
     const saleVal = (item.sale_price !== undefined && item.sale_price !== null && item.sale_price !== '') 
         ? formatCurrencyInput(item.sale_price)
         : '';
 
     const html = `
-        <div id="${rowId}" class="grid grid-cols-1 md:grid-cols-[130px_1fr_160px_160px_110px_110px_36px] gap-2 items-center bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-xs">
+        <div id="${rowId}" class="grid grid-cols-1 md:grid-cols-[120px_1fr_160px_160px_100px_100px_100px_36px] gap-2 items-center bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-xs">
             <div>
                 <select class="item-type w-full p-2 border border-slate-300 rounded-lg outline-none bg-white">
                     <option value="Vuelo" ${item.service_type === 'Vuelo' ? 'selected' : ''}>Vuelo</option>
@@ -1788,19 +1954,21 @@ function addBudgetItemRow(item = {}) {
             <div>
                 <input type="text" class="item-desc w-full p-2 border border-slate-300 rounded-lg outline-none bg-white" placeholder="Descripción del servicio" value="${escapeProfitText(item.description || '')}">
             </div>
-            <div>
-                <select class="item-client w-full p-2 border border-slate-300 rounded-lg outline-none bg-white font-medium text-slate-700">
-                    ${clientOpts}
-                </select>
+            <div class="relative item-client-container">
+                <input type="hidden" class="item-client" value="${defaultClientId || ''}">
+                <input type="text" class="item-client-search w-full p-2 border border-slate-300 rounded-lg outline-none bg-white font-medium text-slate-700" placeholder="Buscar cliente..." value="${escapeProfitText(defaultClientName)}" autocomplete="off" oninput="handleItemClientInput(this)" onfocus="handleItemClientFocus(this)">
+                <div class="item-client-dropdown absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-30 max-h-48 overflow-y-auto hidden divide-y divide-slate-100"></div>
             </div>
-            <div>
-                <select class="item-supplier w-full p-2 border border-slate-300 rounded-lg outline-none bg-white">
-                    <option value="">-- Proveedor --</option>
-                    ${suppliersOpts}
-                </select>
+            <div class="relative item-supplier-container">
+                <input type="hidden" class="item-supplier" value="${defaultSupplierId || ''}">
+                <input type="text" class="item-supplier-search w-full p-2 border border-slate-300 rounded-lg outline-none bg-white font-medium text-slate-700" placeholder="Buscar proveedor..." value="${escapeProfitText(defaultSupplierName)}" autocomplete="off" oninput="handleItemSupplierInput(this)" onfocus="handleItemSupplierFocus(this)">
+                <div class="item-supplier-dropdown absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-30 max-h-48 overflow-y-auto hidden divide-y divide-slate-100"></div>
             </div>
             <div>
                 <input type="text" inputmode="decimal" class="item-cost w-full p-2 border border-slate-300 rounded-lg outline-none bg-white text-right font-medium" placeholder="Costo" value="${costVal}" onblur="handleCurrencyBlur(this)">
+            </div>
+            <div>
+                <input type="text" inputmode="decimal" class="item-gs-adm w-full p-2 border border-slate-300 rounded-lg outline-none bg-white text-right font-medium" placeholder="GS ADM" value="${gsAdmVal}" onblur="handleCurrencyBlur(this)">
             </div>
             <div>
                 <input type="text" inputmode="decimal" class="item-sale w-full p-2 border border-slate-300 rounded-lg outline-none bg-white text-right font-medium" placeholder="Venta" value="${saleVal}" onblur="handleCurrencyBlur(this)">
@@ -1829,12 +1997,14 @@ async function saveBooking(e) {
     const itemRows = document.querySelectorAll('#budget-items-container > div');
     const items = Array.from(itemRows).map(row => {
         const clientVal = row.querySelector('.item-client')?.value;
+        const supplierVal = row.querySelector('.item-supplier')?.value;
         return {
             service_type: row.querySelector('.item-type').value,
             description: row.querySelector('.item-desc').value,
-            supplier_id: row.querySelector('.item-supplier').value ? parseInt(row.querySelector('.item-supplier').value) : null,
+            supplier_id: supplierVal ? parseInt(supplierVal) : null,
             client_id: clientVal ? parseInt(clientVal) : null,
             cost_price: parseCurrencyInput(row.querySelector('.item-cost').value),
+            gs_adm: parseCurrencyInput(row.querySelector('.item-gs-adm')?.value || '0'),
             sale_price: parseCurrencyInput(row.querySelector('.item-sale').value),
             quantity: 1
         };
@@ -1887,6 +2057,7 @@ async function editBooking(id) {
 
         if (!salespeopleCache.length) await loadSalespeopleCache();
         if (!clientsCache.length) await loadClientsCache();
+        if (!suppliersCache.length) await loadSuppliersCache();
 
         budgetSelectedClientIds = (b.client_ids && b.client_ids.length > 0) ? [...b.client_ids] : (b.client_id ? [b.client_id] : []);
         renderBudgetSelectedClients();
@@ -2174,6 +2345,7 @@ function renderBookingItemsAndPayments(b, filterSupplier = '', filterClient = ''
     if (itemsBody) {
         itemsBody.innerHTML = itemsToShow.length ? itemsToShow.map(item => {
             const cost = Number(item.cost_price || 0);
+            const gsAdm = Number(item.gs_adm || 0);
             const qty = Number(item.quantity) || 1;
             const totalItemCost = cost * qty;
             const paidCost = Number(item.paid_cost || 0);
@@ -2185,7 +2357,7 @@ function renderBookingItemsAndPayments(b, filterSupplier = '', filterClient = ''
                     : `<span class="text-slate-400">$ 0.00</span>`);
 
             const sale = Number(item.sale_price || 0);
-            const saldo = sale - cost;
+            const saldo = sale - (cost + gsAdm);
 
             const actionCell = (cost > 0 && canManageSupplierPayables())
                 ? `<button type="button" onclick="closeModal('modal-booking-payments'); openPaymentModal(${b.id}, 'Proveedor', ${item.id})" class="text-[11px] bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold px-2 py-1 rounded-lg border border-rose-200 transition shadow-xs flex items-center gap-1 mx-auto" title="Registrar pago al proveedor por este servicio">
@@ -2201,12 +2373,13 @@ function renderBookingItemsAndPayments(b, filterSupplier = '', filterClient = ''
                 <td class="p-3 font-semibold text-blue-700">${escapeProfitText(item.supplier_name || '-')}</td>
                 <td class="p-3 text-right">${qty}</td>
                 <td class="p-3 text-right">${formatProfitAmount(b.currency, cost)}</td>
+                <td class="p-3 text-right font-medium text-slate-600">${formatProfitAmount(b.currency, gsAdm)}</td>
                 <td class="p-3 text-right">${paidCostBadge}</td>
                 <td class="p-3 text-right">${formatProfitAmount(b.currency, sale)}</td>
                 <td class="p-3 text-right font-semibold ${saldo < 0 ? 'text-rose-700' : 'text-slate-800'}">${formatProfitAmount(b.currency, saldo)}</td>
                 <td class="p-3 text-center">${actionCell}</td>
             </tr>`;
-        }).join('') : `<tr><td colspan="10" class="p-4 text-center text-slate-400">${(filterSuppLower || filterCliId) ? 'No hay ítems que coincidan con los filtros seleccionados.' : 'No hay ítems de presupuesto asociados a esta reserva.'}</td></tr>`;
+        }).join('') : `<tr><td colspan="11" class="p-4 text-center text-slate-400">${(filterSuppLower || filterCliId) ? 'No hay ítems que coincidan con los filtros seleccionados.' : 'No hay ítems de presupuesto asociados a esta reserva.'}</td></tr>`;
     }
 
     // 2. Render Payments

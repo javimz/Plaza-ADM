@@ -121,7 +121,7 @@ def get_bookings(status: Optional[str] = None, current_user: dict = Depends(get_
                     cost_val = float(b_cost[0])
             if cost_val == 0.0:
                 cursor.execute("""
-                    SELECT SUM(cost_price * quantity)
+                    SELECT SUM((cost_price + COALESCE(gs_adm, 0)) * quantity)
                     FROM budget_items
                     WHERE booking_id = ? OR (booking_id IS NULL AND budget_id = ?);
                 """, (bid, booking.get("budget_id")))
@@ -179,7 +179,7 @@ def get_booking(booking_id: int, current_user: dict = Depends(get_current_user))
             cost_val = float(b_cost[0])
     if cost_val == 0.0:
         cursor.execute("""
-            SELECT SUM(cost_price * quantity)
+            SELECT SUM((cost_price + COALESCE(gs_adm, 0)) * quantity)
             FROM budget_items
             WHERE booking_id = ? OR (booking_id IS NULL AND budget_id = ?);
         """, (booking_id, bk["budget_id"]))
@@ -229,7 +229,7 @@ def get_booking(booking_id: int, current_user: dict = Depends(get_current_user))
     for row in cursor.fetchall():
         item_dict = dict(row)
         item_dict["paid_cost"] = float(item_dict.get("paid_cost") or 0.0)
-        total_cost = float(item_dict.get("cost_price") or 0.0) * int(item_dict.get("quantity") or 1)
+        total_cost = (float(item_dict.get("cost_price") or 0.0) + float(item_dict.get("gs_adm") or 0.0)) * int(item_dict.get("quantity") or 1)
         item_dict["cost_balance"] = max(0.0, total_cost - item_dict["paid_cost"])
         items_list.append(item_dict)
     bk_dict["items"] = items_list
@@ -315,7 +315,7 @@ def create_booking(payload: BookingCreate, current_user: dict = Depends(get_curr
         client_ids = validate_client_ids(cursor, raw_client_ids)
         primary_client_id = client_ids[0]
 
-        total_cost = sum(item.cost_price * item.quantity for item in payload.items) if payload.items else (payload.total_cost or 0.0)
+        total_cost = sum((item.cost_price + (item.gs_adm or 0.0)) * item.quantity for item in payload.items) if payload.items else (payload.total_cost or 0.0)
         items_sale_total = sum(item.sale_price * item.quantity for item in payload.items) if payload.items else 0.0
         total_amount = items_sale_total if (items_sale_total > 0 or payload.items) else (payload.total_amount or 0.0)
 
@@ -340,11 +340,11 @@ def create_booking(payload: BookingCreate, current_user: dict = Depends(get_curr
             cursor.execute("""
                 INSERT INTO budget_items (
                     booking_id, budget_id, service_type, description, supplier_id, client_id,
-                    cost_price, sale_price, quantity, subtotal
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                    cost_price, gs_adm, sale_price, quantity, subtotal
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """, (
                 booking_id, payload.budget_id, item.service_type, item.description, item.supplier_id,
-                item.client_id, item.cost_price, item.sale_price, item.quantity, subtotal
+                item.client_id, item.cost_price, item.gs_adm or 0.0, item.sale_price, item.quantity, subtotal
             ))
         conn.commit()
     finally:
@@ -367,7 +367,7 @@ def update_booking(booking_id: int, payload: BookingUpdate, current_user: dict =
         client_ids = validate_client_ids(cursor, raw_client_ids)
         primary_client_id = client_ids[0]
 
-        total_cost = sum(item.cost_price * item.quantity for item in payload.items) if payload.items else (payload.total_cost or float(existing["total_cost"] or 0.0))
+        total_cost = sum((item.cost_price + (item.gs_adm or 0.0)) * item.quantity for item in payload.items) if payload.items else (payload.total_cost or float(existing["total_cost"] or 0.0))
         items_sale_total = sum(item.sale_price * item.quantity for item in payload.items) if payload.items else 0.0
         total_amount = items_sale_total if (items_sale_total > 0 or payload.items) else (payload.total_amount or float(existing["total_amount"] or 0.0))
         paid_amount = float(existing["paid_amount"] or 0.0)
@@ -399,11 +399,11 @@ def update_booking(booking_id: int, payload: BookingUpdate, current_user: dict =
                 cursor.execute("""
                     INSERT INTO budget_items (
                         booking_id, budget_id, service_type, description, supplier_id, client_id,
-                        cost_price, sale_price, quantity, subtotal
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                        cost_price, gs_adm, sale_price, quantity, subtotal
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
                 """, (
                     booking_id, budget_id_val, item.service_type, item.description, item.supplier_id,
-                    item.client_id, item.cost_price, item.sale_price, item.quantity, subtotal
+                    item.client_id, item.cost_price, item.gs_adm or 0.0, item.sale_price, item.quantity, subtotal
                 ))
 
         conn.commit()
