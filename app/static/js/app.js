@@ -1982,8 +1982,10 @@ async function showBookingPaymentsHistory(bookingId) {
         document.getElementById('hist-modal-total').innerText = `${b.currency} $ ${b.total_amount.toLocaleString('es-AR', {minimumFractionDigits: 2})}`;
         document.getElementById('hist-modal-paid').innerText = `${b.currency} $ ${b.paid_amount.toLocaleString('es-AR', {minimumFractionDigits: 2})}`;
         document.getElementById('hist-modal-balance').innerText = `${b.currency} $ ${b.balance_due.toLocaleString('es-AR', {minimumFractionDigits: 2})}`;
-        document.getElementById('hist-modal-cost').innerText = `${b.currency} $ ${Number(b.total_cost || 0).toLocaleString('es-AR', {minimumFractionDigits: 2})}`;
-        document.getElementById('hist-modal-cost-balance').innerText = `${b.currency} $ ${Number(b.cost_balance || 0).toLocaleString('es-AR', {minimumFractionDigits: 2})}`;
+        const costEl = document.getElementById('hist-modal-cost');
+        if (costEl) costEl.innerText = `${b.currency} $ ${Number(b.total_cost || 0).toLocaleString('es-AR', {minimumFractionDigits: 2})}`;
+        const costBalEl = document.getElementById('hist-modal-cost-balance');
+        if (costBalEl) costBalEl.innerText = `${b.currency} $ ${Number(b.cost_balance || 0).toLocaleString('es-AR', {minimumFractionDigits: 2})}`;
 
         const addBtn = document.getElementById('hist-modal-add-payment-btn');
         if (addBtn) {
