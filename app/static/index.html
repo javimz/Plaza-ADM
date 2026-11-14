@@ -659,6 +659,19 @@
                             </tbody>
                         </table>
                     </div>
+                    <div id="budgets-table-body-pagination" class="table-pagination-bar px-4 py-3 border-t border-slate-200 bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-600 hidden">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span class="font-medium text-slate-500">Ver:</span>
+                            <div class="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5" role="group" aria-label="Registros por página">
+                                <button type="button" onclick="setTablePageSize('budgets-table-body', 10)" data-size="10" class="page-size-btn px-2.5 py-1 rounded-md font-bold text-xs transition bg-white text-blue-700 shadow-xs cursor-pointer">10</button>
+                                <button type="button" onclick="setTablePageSize('budgets-table-body', 20)" data-size="20" class="page-size-btn px-2.5 py-1 rounded-md font-medium text-xs transition text-slate-600 hover:text-slate-900 cursor-pointer">20</button>
+                                <button type="button" onclick="setTablePageSize('budgets-table-body', 40)" data-size="40" class="page-size-btn px-2.5 py-1 rounded-md font-medium text-xs transition text-slate-600 hover:text-slate-900 cursor-pointer">40</button>
+                            </div>
+                            <span class="text-slate-300">|</span>
+                            <span id="budgets-table-body-page-info" class="text-slate-500 font-medium">Mostrando 0 registros</span>
+                        </div>
+                        <div id="budgets-table-body-page-nav" class="flex items-center gap-1 justify-end flex-wrap"></div>
+                    </div>
                 </div>
             </section>
 
@@ -718,6 +731,19 @@
                             </tbody>
                         </table>
                     </div>
+                    <div id="bookings-table-body-pagination" class="table-pagination-bar px-4 py-3 border-t border-slate-200 bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-600 hidden">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span class="font-medium text-slate-500">Ver:</span>
+                            <div class="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5" role="group" aria-label="Registros por página">
+                                <button type="button" onclick="setTablePageSize('bookings-table-body', 10)" data-size="10" class="page-size-btn px-2.5 py-1 rounded-md font-bold text-xs transition bg-white text-blue-700 shadow-xs cursor-pointer">10</button>
+                                <button type="button" onclick="setTablePageSize('bookings-table-body', 20)" data-size="20" class="page-size-btn px-2.5 py-1 rounded-md font-medium text-xs transition text-slate-600 hover:text-slate-900 cursor-pointer">20</button>
+                                <button type="button" onclick="setTablePageSize('bookings-table-body', 40)" data-size="40" class="page-size-btn px-2.5 py-1 rounded-md font-medium text-xs transition text-slate-600 hover:text-slate-900 cursor-pointer">40</button>
+                            </div>
+                            <span class="text-slate-300">|</span>
+                            <span id="bookings-table-body-page-info" class="text-slate-500 font-medium">Mostrando 0 registros</span>
+                        </div>
+                        <div id="bookings-table-body-page-nav" class="flex items-center gap-1 justify-end flex-wrap"></div>
+                    </div>
                 </div>
 
                 <div id="sales-payments-panel" class="hidden bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -743,6 +769,19 @@
                                 <tr><td colspan="8" class="p-4 text-center text-slate-400">Cargando pagos...</td></tr>
                             </tbody>
                         </table>
+                    </div>
+                    <div id="sales-payments-table-body-pagination" class="table-pagination-bar px-4 py-3 border-t border-slate-200 bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-600 hidden">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span class="font-medium text-slate-500">Ver:</span>
+                            <div class="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5" role="group" aria-label="Registros por página">
+                                <button type="button" onclick="setTablePageSize('sales-payments-table-body', 10)" data-size="10" class="page-size-btn px-2.5 py-1 rounded-md font-bold text-xs transition bg-white text-blue-700 shadow-xs cursor-pointer">10</button>
+                                <button type="button" onclick="setTablePageSize('sales-payments-table-body', 20)" data-size="20" class="page-size-btn px-2.5 py-1 rounded-md font-medium text-xs transition text-slate-600 hover:text-slate-900 cursor-pointer">20</button>
+                                <button type="button" onclick="setTablePageSize('sales-payments-table-body', 40)" data-size="40" class="page-size-btn px-2.5 py-1 rounded-md font-medium text-xs transition text-slate-600 hover:text-slate-900 cursor-pointer">40</button>
+                            </div>
+                            <span class="text-slate-300">|</span>
+                            <span id="sales-payments-table-body-page-info" class="text-slate-500 font-medium">Mostrando 0 registros</span>
+                        </div>
+                        <div id="sales-payments-table-body-page-nav" class="flex items-center gap-1 justify-end flex-wrap"></div>
                     </div>
                 </div>
             </section>
@@ -783,6 +822,19 @@
                             </tbody>
                         </table>
                     </div>
+                    <div id="payments-table-body-pagination" class="table-pagination-bar px-4 py-3 border-t border-slate-200 bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-600 hidden">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span class="font-medium text-slate-500">Ver:</span>
+                            <div class="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5" role="group" aria-label="Registros por página">
+                                <button type="button" onclick="setTablePageSize('payments-table-body', 10)" data-size="10" class="page-size-btn px-2.5 py-1 rounded-md font-bold text-xs transition bg-white text-blue-700 shadow-xs cursor-pointer">10</button>
+                                <button type="button" onclick="setTablePageSize('payments-table-body', 20)" data-size="20" class="page-size-btn px-2.5 py-1 rounded-md font-medium text-xs transition text-slate-600 hover:text-slate-900 cursor-pointer">20</button>
+                                <button type="button" onclick="setTablePageSize('payments-table-body', 40)" data-size="40" class="page-size-btn px-2.5 py-1 rounded-md font-medium text-xs transition text-slate-600 hover:text-slate-900 cursor-pointer">40</button>
+                            </div>
+                            <span class="text-slate-300">|</span>
+                            <span id="payments-table-body-page-info" class="text-slate-500 font-medium">Mostrando 0 registros</span>
+                        </div>
+                        <div id="payments-table-body-page-nav" class="flex items-center gap-1 justify-end flex-wrap"></div>
+                    </div>
                 </div>
             </section>
 
@@ -822,6 +874,19 @@
                             </tbody>
                         </table>
                     </div>
+                    <div id="clients-table-body-pagination" class="table-pagination-bar px-4 py-3 border-t border-slate-200 bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-600 hidden">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span class="font-medium text-slate-500">Ver:</span>
+                            <div class="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5" role="group" aria-label="Registros por página">
+                                <button type="button" onclick="setTablePageSize('clients-table-body', 10)" data-size="10" class="page-size-btn px-2.5 py-1 rounded-md font-bold text-xs transition bg-white text-blue-700 shadow-xs cursor-pointer">10</button>
+                                <button type="button" onclick="setTablePageSize('clients-table-body', 20)" data-size="20" class="page-size-btn px-2.5 py-1 rounded-md font-medium text-xs transition text-slate-600 hover:text-slate-900 cursor-pointer">20</button>
+                                <button type="button" onclick="setTablePageSize('clients-table-body', 40)" data-size="40" class="page-size-btn px-2.5 py-1 rounded-md font-medium text-xs transition text-slate-600 hover:text-slate-900 cursor-pointer">40</button>
+                            </div>
+                            <span class="text-slate-300">|</span>
+                            <span id="clients-table-body-page-info" class="text-slate-500 font-medium">Mostrando 0 registros</span>
+                        </div>
+                        <div id="clients-table-body-page-nav" class="flex items-center gap-1 justify-end flex-wrap"></div>
+                    </div>
                 </div>
             </section>
 
@@ -858,6 +923,19 @@
                                 <tr><td colspan="5" class="p-4 text-center text-slate-400">Cargando proveedores...</td></tr>
                             </tbody>
                         </table>
+                    </div>
+                    <div id="suppliers-table-body-pagination" class="table-pagination-bar px-4 py-3 border-t border-slate-200 bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-600 hidden">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span class="font-medium text-slate-500">Ver:</span>
+                            <div class="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5" role="group" aria-label="Registros por página">
+                                <button type="button" onclick="setTablePageSize('suppliers-table-body', 10)" data-size="10" class="page-size-btn px-2.5 py-1 rounded-md font-bold text-xs transition bg-white text-blue-700 shadow-xs cursor-pointer">10</button>
+                                <button type="button" onclick="setTablePageSize('suppliers-table-body', 20)" data-size="20" class="page-size-btn px-2.5 py-1 rounded-md font-medium text-xs transition text-slate-600 hover:text-slate-900 cursor-pointer">20</button>
+                                <button type="button" onclick="setTablePageSize('suppliers-table-body', 40)" data-size="40" class="page-size-btn px-2.5 py-1 rounded-md font-medium text-xs transition text-slate-600 hover:text-slate-900 cursor-pointer">40</button>
+                            </div>
+                            <span class="text-slate-300">|</span>
+                            <span id="suppliers-table-body-page-info" class="text-slate-500 font-medium">Mostrando 0 registros</span>
+                        </div>
+                        <div id="suppliers-table-body-page-nav" class="flex items-center gap-1 justify-end flex-wrap"></div>
                     </div>
                 </div>
             </section>
@@ -896,6 +974,19 @@
                                 <tr><td colspan="6" class="p-4 text-center text-slate-400">Cargando usuarios...</td></tr>
                             </tbody>
                         </table>
+                    </div>
+                    <div id="users-table-body-pagination" class="table-pagination-bar px-4 py-3 border-t border-slate-200 bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-600 hidden">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span class="font-medium text-slate-500">Ver:</span>
+                            <div class="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5" role="group" aria-label="Registros por página">
+                                <button type="button" onclick="setTablePageSize('users-table-body', 10)" data-size="10" class="page-size-btn px-2.5 py-1 rounded-md font-bold text-xs transition bg-white text-blue-700 shadow-xs cursor-pointer">10</button>
+                                <button type="button" onclick="setTablePageSize('users-table-body', 20)" data-size="20" class="page-size-btn px-2.5 py-1 rounded-md font-medium text-xs transition text-slate-600 hover:text-slate-900 cursor-pointer">20</button>
+                                <button type="button" onclick="setTablePageSize('users-table-body', 40)" data-size="40" class="page-size-btn px-2.5 py-1 rounded-md font-medium text-xs transition text-slate-600 hover:text-slate-900 cursor-pointer">40</button>
+                            </div>
+                            <span class="text-slate-300">|</span>
+                            <span id="users-table-body-page-info" class="text-slate-500 font-medium">Mostrando 0 registros</span>
+                        </div>
+                        <div id="users-table-body-page-nav" class="flex items-center gap-1 justify-end flex-wrap"></div>
                     </div>
                 </div>
             </section>
@@ -957,6 +1048,19 @@
                                 <tr><td colspan="8" class="p-5 text-center text-slate-400">Cargando cuentas por pagar...</td></tr>
                             </tbody>
                         </table>
+                    </div>
+                    <div id="supplier-payables-table-body-pagination" class="table-pagination-bar px-4 py-3 border-t border-slate-200 bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-600 hidden">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span class="font-medium text-slate-500">Ver:</span>
+                            <div class="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5" role="group" aria-label="Registros por página">
+                                <button type="button" onclick="setTablePageSize('supplier-payables-table-body', 10)" data-size="10" class="page-size-btn px-2.5 py-1 rounded-md font-bold text-xs transition bg-white text-blue-700 shadow-xs cursor-pointer">10</button>
+                                <button type="button" onclick="setTablePageSize('supplier-payables-table-body', 20)" data-size="20" class="page-size-btn px-2.5 py-1 rounded-md font-medium text-xs transition text-slate-600 hover:text-slate-900 cursor-pointer">20</button>
+                                <button type="button" onclick="setTablePageSize('supplier-payables-table-body', 40)" data-size="40" class="page-size-btn px-2.5 py-1 rounded-md font-medium text-xs transition text-slate-600 hover:text-slate-900 cursor-pointer">40</button>
+                            </div>
+                            <span class="text-slate-300">|</span>
+                            <span id="supplier-payables-table-body-page-info" class="text-slate-500 font-medium">Mostrando 0 registros</span>
+                        </div>
+                        <div id="supplier-payables-table-body-page-nav" class="flex items-center gap-1 justify-end flex-wrap"></div>
                     </div>
                 </div>
             </section>
@@ -1022,6 +1126,19 @@
                             </tbody>
                         </table>
                     </div>
+                    <div id="profits-table-body-pagination" class="table-pagination-bar px-4 py-3 border-t border-slate-200 bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-600 hidden">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span class="font-medium text-slate-500">Ver:</span>
+                            <div class="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5" role="group" aria-label="Registros por página">
+                                <button type="button" onclick="setTablePageSize('profits-table-body', 10)" data-size="10" class="page-size-btn px-2.5 py-1 rounded-md font-bold text-xs transition bg-white text-blue-700 shadow-xs cursor-pointer">10</button>
+                                <button type="button" onclick="setTablePageSize('profits-table-body', 20)" data-size="20" class="page-size-btn px-2.5 py-1 rounded-md font-medium text-xs transition text-slate-600 hover:text-slate-900 cursor-pointer">20</button>
+                                <button type="button" onclick="setTablePageSize('profits-table-body', 40)" data-size="40" class="page-size-btn px-2.5 py-1 rounded-md font-medium text-xs transition text-slate-600 hover:text-slate-900 cursor-pointer">40</button>
+                            </div>
+                            <span class="text-slate-300">|</span>
+                            <span id="profits-table-body-page-info" class="text-slate-500 font-medium">Mostrando 0 registros</span>
+                        </div>
+                        <div id="profits-table-body-page-nav" class="flex items-center gap-1 justify-end flex-wrap"></div>
+                    </div>
                 </div>
 
             </section>
@@ -1066,7 +1183,20 @@
                             </tbody>
                         </table>
                     </div>
-                    <p id="audit-results-count" class="px-4 py-3 text-xs text-slate-500 border-t border-slate-100"></p>
+                    <div id="audit-table-body-pagination" class="table-pagination-bar px-4 py-3 border-t border-slate-200 bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-600 hidden">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span class="font-medium text-slate-500">Ver:</span>
+                            <div class="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5" role="group" aria-label="Registros por página">
+                                <button type="button" onclick="setTablePageSize('audit-table-body', 10)" data-size="10" class="page-size-btn px-2.5 py-1 rounded-md font-bold text-xs transition bg-white text-blue-700 shadow-xs cursor-pointer">10</button>
+                                <button type="button" onclick="setTablePageSize('audit-table-body', 20)" data-size="20" class="page-size-btn px-2.5 py-1 rounded-md font-medium text-xs transition text-slate-600 hover:text-slate-900 cursor-pointer">20</button>
+                                <button type="button" onclick="setTablePageSize('audit-table-body', 40)" data-size="40" class="page-size-btn px-2.5 py-1 rounded-md font-medium text-xs transition text-slate-600 hover:text-slate-900 cursor-pointer">40</button>
+                            </div>
+                            <span class="text-slate-300">|</span>
+                            <span id="audit-table-body-page-info" class="text-slate-500 font-medium">Mostrando 0 registros</span>
+                        </div>
+                        <div id="audit-table-body-page-nav" class="flex items-center gap-1 justify-end flex-wrap"></div>
+                    </div>
+                    <p id="audit-results-count" class="hidden"></p>
                 </div>
             </section>
 

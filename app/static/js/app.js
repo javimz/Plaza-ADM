@@ -771,6 +771,7 @@ function renderSupplierPayables() {
     });
     if (!rows.length) {
         tbody.innerHTML = '<tr><td colspan="8" class="p-5 text-center text-slate-400">No hay cuentas por pagar para estos filtros.</td></tr>';
+        if (typeof paginateTable === 'function') paginateTable('supplier-payables-table-body', 1, false);
         return;
     }
     const canManage = canManageSupplierPayables();
@@ -799,6 +800,7 @@ function renderSupplierPayables() {
             </td>
         </tr>`).join('');
     if (window.lucide) lucide.createIcons();
+    if (typeof paginateTable === 'function') paginateTable('supplier-payables-table-body', 1, false);
 }
 
 async function deleteSupplierPayable(payableId) {
@@ -3559,46 +3561,265 @@ function closeModal(modalId) {
     if (m) m.classList.add('hidden');
 }
 
+const PAGINATED_TABLE_IDS = [
+    'budgets-table-body',
+    'bookings-table-body',
+    'sales-payments-table-body',
+    'payments-table-body',
+    'clients-table-body',
+    'suppliers-table-body',
+    'users-table-body',
+    'supplier-payables-table-body',
+    'profits-table-body',
+    'audit-table-body'
+];
+
+const tablePaginationState = {};
+
+function getTablePaginationState(tbodyId) {
+    if (!tablePaginationState[tbodyId]) {
+        tablePaginationState[tbodyId] = { currentPage: 1, pageSize: 10 };
+    }
+    return tablePaginationState[tbodyId];
+}
+
+function setTablePageSize(tbodyId, size) {
+    const state = getTablePaginationState(tbodyId);
+    state.pageSize = Number(size) || 10;
+    state.currentPage = 1;
+    paginateTable(tbodyId, 1, false);
+}
+
+function setTablePage(tbodyId, page) {
+    paginateTable(tbodyId, page, true);
+}
+
+function ensureTablePaginationContainer(tbodyId) {
+    let paginationEl = document.getElementById(`${tbodyId}-pagination`);
+    if (!paginationEl) {
+        const tbody = document.getElementById(tbodyId);
+        if (!tbody) return null;
+        const card = tbody.closest('.bg-white') || tbody.closest('.table-container')?.parentElement || tbody.parentElement;
+        if (!card) return null;
+
+        paginationEl = document.createElement('div');
+        paginationEl.id = `${tbodyId}-pagination`;
+        paginationEl.className = 'table-pagination-bar px-4 py-3 border-t border-slate-200 bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-600 hidden';
+        paginationEl.innerHTML = `
+            <div class="flex items-center gap-2 flex-wrap">
+                <span class="font-medium text-slate-500">Ver:</span>
+                <div class="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5" role="group" aria-label="Registros por página">
+                    <button type="button" onclick="setTablePageSize('${tbodyId}', 10)" data-size="10" class="page-size-btn px-2.5 py-1 rounded-md font-bold text-xs transition bg-white text-blue-700 shadow-xs cursor-pointer">10</button>
+                    <button type="button" onclick="setTablePageSize('${tbodyId}', 20)" data-size="20" class="page-size-btn px-2.5 py-1 rounded-md font-medium text-xs transition text-slate-600 hover:text-slate-900 cursor-pointer">20</button>
+                    <button type="button" onclick="setTablePageSize('${tbodyId}', 40)" data-size="40" class="page-size-btn px-2.5 py-1 rounded-md font-medium text-xs transition text-slate-600 hover:text-slate-900 cursor-pointer">40</button>
+                </div>
+                <span class="text-slate-300">|</span>
+                <span id="${tbodyId}-page-info" class="text-slate-500 font-medium">Mostrando 0 registros</span>
+            </div>
+            <div id="${tbodyId}-page-nav" class="flex items-center gap-1 justify-end flex-wrap"></div>
+        `;
+        card.appendChild(paginationEl);
+    }
+    return paginationEl;
+}
+
+function paginateTable(tbodyId, targetPage = null, shouldScroll = false) {
+    const tbody = document.getElementById(tbodyId);
+    if (!tbody) return;
+
+    const state = getTablePaginationState(tbodyId);
+    if (targetPage !== null && targetPage !== undefined) {
+        state.currentPage = Number(targetPage) || 1;
+    }
+
+    const container = ensureTablePaginationContainer(tbodyId);
+
+    // Get all data rows (excluding loading/empty messages with colspan)
+    const allRows = Array.from(tbody.querySelectorAll('tr')).filter(row =>
+        !row.hasAttribute('data-filter-empty') && !row.querySelector('td[colspan]')
+    );
+
+    // If there are no data rows at all (table is empty / loading)
+    if (allRows.length === 0) {
+        if (container) container.classList.add('hidden');
+        return;
+    }
+
+    // Matching rows are those not filtered out by search
+    const matchingRows = allRows.filter(row => row.dataset.matchesFilter !== 'false');
+    const totalMatching = matchingRows.length;
+    const totalPages = Math.max(1, Math.ceil(totalMatching / state.pageSize));
+
+    if (state.currentPage > totalPages) state.currentPage = totalPages;
+    if (state.currentPage < 1) state.currentPage = 1;
+
+    // Show/hide empty search message
+    let emptyRow = tbody.querySelector('[data-filter-empty]');
+    if (totalMatching === 0) {
+        if (!emptyRow) {
+            emptyRow = document.createElement('tr');
+            emptyRow.setAttribute('data-filter-empty', 'true');
+            const cell = document.createElement('td');
+            cell.className = 'p-6 text-center text-slate-400';
+            cell.colSpan = Math.max(1, tbody.closest('table')?.querySelectorAll('thead th').length || 1);
+            cell.textContent = 'No hay resultados para esta búsqueda';
+            emptyRow.appendChild(cell);
+            tbody.appendChild(emptyRow);
+        }
+        emptyRow.classList.remove('hidden');
+    } else if (emptyRow) {
+        emptyRow.classList.add('hidden');
+    }
+
+    // Slice rows for current page
+    const startIdx = (state.currentPage - 1) * state.pageSize;
+    const endIdx = startIdx + state.pageSize;
+
+    allRows.forEach(row => {
+        if (row.dataset.matchesFilter === 'false') {
+            row.classList.add('hidden');
+        } else {
+            const indexInMatching = matchingRows.indexOf(row);
+            if (indexInMatching >= startIdx && indexInMatching < endIdx) {
+                row.classList.remove('hidden');
+            } else {
+                row.classList.add('hidden');
+            }
+        }
+    });
+
+    // Update pagination controls UI
+    if (container) {
+        container.classList.remove('hidden');
+
+        // Update Page Size buttons active styling
+        container.querySelectorAll('.page-size-btn').forEach(btn => {
+            const btnSize = Number(btn.getAttribute('data-size'));
+            if (btnSize === state.pageSize) {
+                btn.className = 'page-size-btn px-2.5 py-1 rounded-md font-bold text-xs transition bg-white text-blue-700 shadow-xs cursor-pointer';
+            } else {
+                btn.className = 'page-size-btn px-2.5 py-1 rounded-md font-medium text-xs transition text-slate-600 hover:text-slate-900 cursor-pointer';
+            }
+        });
+
+        // Update Info text (e.g. Mostrando 1 a 10 de 45 registros)
+        const infoEl = document.getElementById(`${tbodyId}-page-info`);
+        if (infoEl) {
+            if (totalMatching === 0) {
+                infoEl.textContent = '0 registros encontrados';
+            } else {
+                const to = Math.min(endIdx, totalMatching);
+                infoEl.textContent = `Mostrando ${startIdx + 1} a ${to} de ${totalMatching} ${totalMatching === 1 ? 'registro' : 'registros'}`;
+            }
+        }
+
+        // Render Page Navigation buttons
+        const navEl = document.getElementById(`${tbodyId}-page-nav`);
+        if (navEl) {
+            let navHtml = '';
+
+            // Previous Button
+            const prevDisabled = state.currentPage <= 1;
+            navHtml += `<button type="button" onclick="setTablePage('${tbodyId}', ${state.currentPage - 1})" ${prevDisabled ? 'disabled' : ''} class="px-2.5 py-1 rounded-lg border border-slate-200 text-xs font-semibold ${prevDisabled ? 'text-slate-300 border-slate-100 cursor-not-allowed' : 'text-slate-700 hover:bg-slate-50 cursor-pointer transition'}" title="Página anterior">Anterior</button>`;
+
+            // Page numbers calculation with ellipsis
+            const pages = [];
+            if (totalPages <= 7) {
+                for (let i = 1; i <= totalPages; i++) pages.push(i);
+            } else {
+                if (state.currentPage <= 4) {
+                    pages.push(1, 2, 3, 4, 5, '...', totalPages);
+                } else if (state.currentPage >= totalPages - 3) {
+                    pages.push(1, '...', totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages);
+                } else {
+                    pages.push(1, '...', state.currentPage - 1, state.currentPage, state.currentPage + 1, '...', totalPages);
+                }
+            }
+
+            pages.forEach(p => {
+                if (p === '...') {
+                    navHtml += `<span class="px-1 text-slate-400 font-semibold select-none">...</span>`;
+                } else {
+                    const isActive = p === state.currentPage;
+                    navHtml += `<button type="button" onclick="setTablePage('${tbodyId}', ${p})" class="min-w-[28px] h-7 px-2 rounded-lg text-xs font-bold transition cursor-pointer ${isActive ? 'bg-blue-600 text-white shadow-xs' : 'border border-slate-200 text-slate-700 hover:bg-slate-50'}">${p}</button>`;
+                }
+            });
+
+            // Next Button
+            const nextDisabled = state.currentPage >= totalPages;
+            navHtml += `<button type="button" onclick="setTablePage('${tbodyId}', ${state.currentPage + 1})" ${nextDisabled ? 'disabled' : ''} class="px-2.5 py-1 rounded-lg border border-slate-200 text-xs font-semibold ${nextDisabled ? 'text-slate-300 border-slate-100 cursor-not-allowed' : 'text-slate-700 hover:bg-slate-50 cursor-pointer transition'}" title="Página siguiente">Siguiente</button>`;
+
+            navEl.innerHTML = navHtml;
+        }
+    }
+
+    // Smooth scroll to top of table if requested
+    if (shouldScroll) {
+        const card = tbody.closest('.bg-white') || tbody.closest('table');
+        if (card) {
+            const rect = card.getBoundingClientRect();
+            if (rect.top < 0) {
+                card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }
+    }
+}
+
 function filterSectionRows(sectionId, query) {
     const section = document.getElementById(sectionId);
     if (!section) return;
     const normalizedQuery = String(query || '').trim().toLocaleLowerCase('es');
 
     section.querySelectorAll('tbody').forEach(tbody => {
+        const isPaginated = PAGINATED_TABLE_IDS.includes(tbody.id);
         const dataRows = Array.from(tbody.querySelectorAll('tr')).filter(row =>
             !row.hasAttribute('data-filter-empty') && !row.querySelector('td[colspan]')
         );
+
         let visibleCount = 0;
         dataRows.forEach(row => {
             const matches = !normalizedQuery || row.innerText.toLocaleLowerCase('es').includes(normalizedQuery);
-            row.classList.toggle('hidden', !matches);
+            if (isPaginated) {
+                row.dataset.matchesFilter = matches ? 'true' : 'false';
+            } else {
+                row.classList.toggle('hidden', !matches);
+            }
             if (matches) visibleCount += 1;
         });
 
-        let emptyRow = tbody.querySelector('[data-filter-empty]');
-        if (normalizedQuery && dataRows.length > 0 && visibleCount === 0) {
-            if (!emptyRow) {
-                emptyRow = document.createElement('tr');
-                emptyRow.setAttribute('data-filter-empty', 'true');
-                const cell = document.createElement('td');
-                cell.className = 'p-4 text-center text-slate-400';
-                cell.colSpan = Math.max(1, tbody.closest('table')?.querySelectorAll('thead th').length || 1);
-                cell.textContent = 'No hay resultados para esta búsqueda';
-                emptyRow.appendChild(cell);
-                tbody.appendChild(emptyRow);
+        if (isPaginated) {
+            paginateTable(tbody.id, 1, false);
+        } else {
+            let emptyRow = tbody.querySelector('[data-filter-empty]');
+            if (normalizedQuery && dataRows.length > 0 && visibleCount === 0) {
+                if (!emptyRow) {
+                    emptyRow = document.createElement('tr');
+                    emptyRow.setAttribute('data-filter-empty', 'true');
+                    const cell = document.createElement('td');
+                    cell.className = 'p-4 text-center text-slate-400';
+                    cell.colSpan = Math.max(1, tbody.closest('table')?.querySelectorAll('thead th').length || 1);
+                    cell.textContent = 'No hay resultados para esta búsqueda';
+                    emptyRow.appendChild(cell);
+                    tbody.appendChild(emptyRow);
+                }
+                emptyRow.classList.remove('hidden');
+            } else if (emptyRow) {
+                emptyRow.remove();
             }
-            emptyRow.classList.remove('hidden');
-        } else if (emptyRow) {
-            emptyRow.remove();
         }
     });
 }
 
 function applySectionSearch(sectionId) {
     const section = document.getElementById(sectionId);
-    const input = section?.querySelector('input[type="search"]');
-    if (input) filterSectionRows(sectionId, input.value);
+    if (!section) return;
+    const input = section.querySelector('input[type="search"]');
+    filterSectionRows(sectionId, input ? input.value : '');
 }
+
+window.setTablePageSize = setTablePageSize;
+window.setTablePage = setTablePage;
+window.paginateTable = paginateTable;
 
 async function toggleSalesPayments() {
     const panel = document.getElementById('sales-payments-panel');
