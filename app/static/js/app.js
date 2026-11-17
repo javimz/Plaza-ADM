@@ -3089,25 +3089,41 @@ async function createReceiptPdfFile() {
     doc.text(`Fecha: ${p.payment_date || '-'}`, pageWidth - margin, y, {align: 'right'});
     y += 12;
 
+    const colWidth = 82;
     const leftX = margin;
-    const rightX = pageWidth / 2 + 4;
+    const rightX = margin + colWidth + 10;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
     doc.setTextColor(100, 116, 139);
     doc.text('RECIBIDO DE', leftX, y);
     doc.text('EN CONCEPTO DE', rightX, y);
     y += 6;
+
+    // Título / Concepto (puede ocupar varias líneas)
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(11);
     doc.setTextColor(30, 41, 59);
-    doc.text(doc.splitTextToSize(p.client_name || 'Cliente', 78), leftX, y);
-    doc.text(doc.splitTextToSize(p.concept || p.booking_title || 'Servicio', 78), rightX, y);
-    y += 6;
+    const clientLines = doc.splitTextToSize(p.client_name || 'Cliente', colWidth);
+    const conceptLines = doc.splitTextToSize(p.concept || p.booking_title || 'Servicio', colWidth);
+    doc.text(clientLines, leftX, y);
+    doc.text(conceptLines, rightX, y);
+
+    // Calcular altura ocupada por los títulos para no superponer con Documento y Reserva
+    const maxTitleLines = Math.max(clientLines.length, conceptLines.length, 1);
+    y += (maxTitleLines * 5) + 1.5;
+
+    // Documento / Nº de Reserva
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
-    doc.text(`Documento: ${p.client_doc || 'N/A'}`, leftX, y);
-    doc.text(`Reserva: ${p.booking_number || 'N/A'}`, rightX, y);
-    y += 13;
+    doc.setTextColor(71, 85, 105);
+    const docLines = doc.splitTextToSize(`Documento: ${p.client_doc || 'N/A'}`, colWidth);
+    const resLines = doc.splitTextToSize(`Reserva: ${p.booking_number || 'N/A'}`, colWidth);
+    doc.text(docLines, leftX, y);
+    doc.text(resLines, rightX, y);
+
+    const maxDetailLines = Math.max(docLines.length, resLines.length, 1);
+    y += (maxDetailLines * 4.5) + 6;
+
     doc.setDrawColor(226, 232, 240);
     doc.line(margin, y, pageWidth - margin, y);
     y += 11;
@@ -3124,8 +3140,10 @@ async function createReceiptPdfFile() {
         doc.setFontSize(index === 0 ? 12 : 10);
         doc.setTextColor(index === 0 ? 5 : 71, index === 0 ? 150 : 85, index === 0 ? 105 : 105);
         doc.text(label, margin, y);
-        doc.text(doc.splitTextToSize(String(value), 95), pageWidth - margin, y, {align: 'right'});
-        y += index === 0 ? 11 : 9;
+        const valLines = doc.splitTextToSize(String(value), 95);
+        doc.text(valLines, pageWidth - margin, y, {align: 'right'});
+        const rowHeight = Math.max(index === 0 ? 11 : 9, (valLines.length - 1) * 4.5 + (index === 0 ? 11 : 9));
+        y += rowHeight;
     });
     y += 6;
     doc.setDrawColor(226, 232, 240);
