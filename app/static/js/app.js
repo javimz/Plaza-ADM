@@ -3110,7 +3110,7 @@ async function createReceiptPdfFile() {
 
     // Calcular altura ocupada por los títulos para no superponer con Documento y Reserva
     const maxTitleLines = Math.max(clientLines.length, conceptLines.length, 1);
-    y += (maxTitleLines * 5) + 1.5;
+    y += (maxTitleLines * 5.2) + 2.5;
 
     // Documento / Nº de Reserva
     doc.setFont('helvetica', 'normal');
@@ -3122,7 +3122,7 @@ async function createReceiptPdfFile() {
     doc.text(resLines, rightX, y);
 
     const maxDetailLines = Math.max(docLines.length, resLines.length, 1);
-    y += (maxDetailLines * 4.5) + 6;
+    y += (maxDetailLines * 4.5) + 6.5;
 
     doc.setDrawColor(226, 232, 240);
     doc.line(margin, y, pageWidth - margin, y);
