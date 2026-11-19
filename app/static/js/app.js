@@ -1762,7 +1762,7 @@ function renderBookingsTable() {
     }
 
     if (list.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="11" class="p-6 text-center text-slate-400">No se encontraron reservas con el filtro actual</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="9" class="p-6 text-center text-slate-400">No se encontraron reservas con el filtro actual</td></tr>`;
         applySectionSearch('view-bookings');
         return;
     }
@@ -1789,7 +1789,10 @@ function renderBookingsTable() {
 
     tbody.innerHTML = list.map(b => {
         const isBudget = isBudgetStatus(b.status);
-        const progress = b.total_amount > 0 ? Math.min(100, Math.round((b.paid_amount / b.total_amount) * 100)) : 0;
+        const sale = Number(b.total_amount || 0);
+        const cost = Number(b.total_cost || 0);
+        const profit = sale - cost;
+        const marginPct = sale > 0 ? ((profit / sale) * 100) : 0;
         const sellers = (b.seller_names || []).join(', ');
         const dates = (b.start_date || b.end_date) ? `${b.start_date || 'TBD'} al ${b.end_date || 'TBD'}` : '-';
 
@@ -1806,22 +1809,9 @@ function renderBookingsTable() {
                 </td>
                 <td class="p-4 text-xs text-slate-500 whitespace-nowrap">${dates}</td>
                 <td class="p-4">${statusBadge(b.status)}</td>
-                <td class="p-4 font-bold text-slate-900">${b.currency} $ ${Number(b.total_amount || 0).toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
-                <td class="p-4 font-semibold text-emerald-600">
-                    ${isBudget ? '<span class="text-xs text-slate-400 font-normal">-</span>' : `
-                        $ ${Number(b.paid_amount || 0).toLocaleString('es-AR', {minimumFractionDigits: 2})}
-                        <div class="w-full bg-slate-200 h-1.5 rounded-full mt-1 overflow-hidden">
-                            <div class="bg-emerald-500 h-full" style="width: ${progress}%"></div>
-                        </div>
-                    `}
-                </td>
-                <td class="p-4 font-bold ${b.balance_due > 0 ? 'text-amber-600' : 'text-slate-400'}">
-                    ${isBudget ? '<span class="text-xs text-slate-400 font-normal">-</span>' : `$ ${Number(b.balance_due || 0).toLocaleString('es-AR', {minimumFractionDigits: 2})}`}
-                </td>
-                <td class="p-4 font-semibold text-slate-700">${b.currency} $ ${Number(b.total_cost || 0).toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
-                <td class="p-4 font-semibold ${Number(b.cost_balance || 0) < 0 ? 'text-rose-700' : 'text-slate-700'}">
-                    ${isBudget ? '<span class="text-xs text-slate-400 font-normal">-</span>' : `${b.currency} $ ${Number(b.cost_balance || 0).toLocaleString('es-AR', {minimumFractionDigits: 2})}`}
-                </td>
+                <td class="p-4 text-right font-bold text-slate-900">${b.currency} $ ${sale.toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
+                <td class="p-4 text-right font-bold ${profit >= 0 ? 'text-emerald-700' : 'text-rose-600'}">${b.currency} $ ${profit.toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
+                <td class="p-4 text-right font-semibold ${marginPct >= 0 ? 'text-slate-800' : 'text-rose-600'}">${marginPct.toFixed(2)}%</td>
                 <td class="p-4 text-right space-x-1 whitespace-nowrap">
                     ${isBudget ? `
                         <button onclick="confirmBooking(${b.id})" class="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-2.5 py-1.5 rounded-lg transition shadow-sm inline-flex items-center gap-1 cursor-pointer" title="Confirmar esta reserva">
