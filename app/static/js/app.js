@@ -1811,8 +1811,8 @@ function renderBookingsTable() {
 
         const clientCount = (b.client_names && b.client_names.length) || (b.client_ids && b.client_ids.length) || (b.client_name && b.client_name.includes(',') ? b.client_name.split(',').length : 0);
         const isGroup = clientCount > 1 || (b.client_name && b.client_name.includes(','));
-        const groupRef = (b.group_reference && b.group_reference.trim()) ? ` / ${b.group_reference.trim()}` : '';
-        const clientText = isGroup ? `Salida Grupal${groupRef}` : (b.client_name || 'N/A');
+        const groupRef = (b.group_reference && b.group_reference.trim()) ? ` / ${b.group_reference.trim().toUpperCase()}` : '';
+        const clientText = isGroup ? `SALIDA GRUPAL${groupRef}` : (b.client_name ? b.client_name.toUpperCase() : 'N/A');
         const searchKeywords = `${b.client_name || ''} ${b.group_reference || ''}`.trim();
 
         return `
@@ -2033,7 +2033,7 @@ async function saveBooking(e) {
 
     const payload = {
         client_ids: budgetSelectedClientIds,
-        group_reference: document.getElementById('budget-group-reference')?.value?.trim() || '',
+        group_reference: document.getElementById('budget-group-reference')?.value?.trim().toUpperCase() || '',
         title: document.getElementById('budget-title-input').value,
         destination: document.getElementById('budget-destination').value,
         start_date: document.getElementById('budget-start-date').value,
@@ -2166,7 +2166,7 @@ async function showBookingPaymentsHistory(bookingId) {
             ? ` | Salida: ${b.start_date || '-'} | Regreso: ${b.end_date || '-'}`
             : '';
         const budgetNote = (b.budget_number && b.budget_number !== b.booking_number) ? ` | Presupuesto: ${b.budget_number}` : '';
-        const groupRefText = (b.group_reference && b.group_reference.trim()) ? ` [Grupo: ${b.group_reference.trim()}]` : '';
+        const groupRefText = (b.group_reference && b.group_reference.trim()) ? ` [GRUPO: ${b.group_reference.trim().toUpperCase()}]` : '';
         document.getElementById('hist-modal-subtitle').innerText = `${b.title} | Cliente: ${b.client_name || 'N/A'}${groupRefText}${budgetNote}${datesText}`;
         document.getElementById('hist-modal-total').innerText = `${b.currency} $ ${b.total_amount.toLocaleString('es-AR', {minimumFractionDigits: 2})}`;
         document.getElementById('hist-modal-paid').innerText = `${b.currency} $ ${b.paid_amount.toLocaleString('es-AR', {minimumFractionDigits: 2})}`;
