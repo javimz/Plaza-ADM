@@ -445,9 +445,22 @@ function toggleBudgetClientSelection(clientId) {
     }
 }
 
+function updateGroupReferenceVisibility() {
+    const container = document.getElementById('booking-group-reference-container');
+    if (!container) return;
+    const input = document.getElementById('budget-group-reference');
+    const hasValue = input && input.value && input.value.trim().length > 0;
+    if (budgetSelectedClientIds.length > 1 || hasValue) {
+        container.classList.remove('hidden');
+    } else {
+        container.classList.add('hidden');
+    }
+}
+
 function renderBudgetSelectedClients() {
     const container = document.getElementById('budget-selected-clients');
     if (!container) return;
+    updateGroupReferenceVisibility();
     if (!budgetSelectedClientIds.length) {
         container.innerHTML = '<span class="text-xs text-slate-400 italic">No hay clientes agregados. Busque arriba por nombre o DNI y presione ENTER para agregar.</span>';
         updateBudgetItemClientSelectors();
@@ -1798,10 +1811,12 @@ function renderBookingsTable() {
 
         const clientCount = (b.client_names && b.client_names.length) || (b.client_ids && b.client_ids.length) || (b.client_name && b.client_name.includes(',') ? b.client_name.split(',').length : 0);
         const isGroup = clientCount > 1 || (b.client_name && b.client_name.includes(','));
-        const clientText = isGroup ? 'Salida Grupal' : (b.client_name || 'N/A');
+        const groupRef = (b.group_reference && b.group_reference.trim()) ? ` / ${b.group_reference.trim()}` : '';
+        const clientText = isGroup ? `Salida Grupal${groupRef}` : (b.client_name || 'N/A');
+        const searchKeywords = `${b.client_name || ''} ${b.group_reference || ''}`.trim();
 
         return `
-            <tr class="border-b border-slate-100 hover:bg-slate-50 transition" data-search-keywords="${escapeProfitText(b.client_name || '')}">
+            <tr class="border-b border-slate-100 hover:bg-slate-50 transition" data-search-keywords="${escapeProfitText(searchKeywords)}">
                 <td class="p-4 font-bold text-blue-600">
                     ${b.booking_number}
                     ${sellers ? `<span class="block text-xs font-normal text-slate-500">${escapeProfitText(sellers)}</span>` : ''}
@@ -1884,6 +1899,8 @@ async function openNewBookingModal() {
         if (!suppliersCache.length) await loadSuppliersCache();
 
         budgetSelectedClientIds = [];
+        const groupRefInput = document.getElementById('budget-group-reference');
+        if (groupRefInput) groupRefInput.value = '';
         renderBudgetSelectedClients();
 
         budgetSelectedSellerIds = [];
@@ -2016,6 +2033,7 @@ async function saveBooking(e) {
 
     const payload = {
         client_ids: budgetSelectedClientIds,
+        group_reference: document.getElementById('budget-group-reference')?.value?.trim() || '',
         title: document.getElementById('budget-title-input').value,
         destination: document.getElementById('budget-destination').value,
         start_date: document.getElementById('budget-start-date').value,
@@ -2054,6 +2072,9 @@ async function editBooking(id) {
         if (!salespeopleCache.length) await loadSalespeopleCache();
         if (!clientsCache.length) await loadClientsCache();
         if (!suppliersCache.length) await loadSuppliersCache();
+
+        const groupRefInput = document.getElementById('budget-group-reference');
+        if (groupRefInput) groupRefInput.value = b.group_reference || '';
 
         budgetSelectedClientIds = (b.client_ids && b.client_ids.length > 0) ? [...b.client_ids] : (b.client_id ? [b.client_id] : []);
         renderBudgetSelectedClients();
@@ -2145,7 +2166,8 @@ async function showBookingPaymentsHistory(bookingId) {
             ? ` | Salida: ${b.start_date || '-'} | Regreso: ${b.end_date || '-'}`
             : '';
         const budgetNote = (b.budget_number && b.budget_number !== b.booking_number) ? ` | Presupuesto: ${b.budget_number}` : '';
-        document.getElementById('hist-modal-subtitle').innerText = `${b.title} | Cliente: ${b.client_name || 'N/A'}${budgetNote}${datesText}`;
+        const groupRefText = (b.group_reference && b.group_reference.trim()) ? ` [Grupo: ${b.group_reference.trim()}]` : '';
+        document.getElementById('hist-modal-subtitle').innerText = `${b.title} | Cliente: ${b.client_name || 'N/A'}${groupRefText}${budgetNote}${datesText}`;
         document.getElementById('hist-modal-total').innerText = `${b.currency} $ ${b.total_amount.toLocaleString('es-AR', {minimumFractionDigits: 2})}`;
         document.getElementById('hist-modal-paid').innerText = `${b.currency} $ ${b.paid_amount.toLocaleString('es-AR', {minimumFractionDigits: 2})}`;
         document.getElementById('hist-modal-balance').innerText = `${b.currency} $ ${b.balance_due.toLocaleString('es-AR', {minimumFractionDigits: 2})}`;

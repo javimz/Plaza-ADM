@@ -99,6 +99,7 @@ class BudgetItemOut(BudgetItemBase):
 class BudgetBase(BaseModel):
     client_id: Optional[int] = None
     client_ids: Optional[List[int]] = None
+    group_reference: Optional[str] = ""
     title: str
     destination: str
     start_date: Optional[str] = ""
@@ -115,6 +116,7 @@ class BudgetCreate(BudgetBase):
 class BudgetOut(BudgetBase):
     id: int
     budget_number: str
+    group_reference: Optional[str] = ""
     booking_id: Optional[int] = None
     booking_number: Optional[str] = None
     booking_status: Optional[str] = None
@@ -134,6 +136,7 @@ class BudgetOut(BudgetBase):
 class BookingBase(BaseModel):
     client_id: Optional[int] = None
     client_ids: Optional[List[int]] = None
+    group_reference: Optional[str] = ""
     title: Optional[str] = ""
     destination: Optional[str] = ""
     start_date: Optional[str] = ""
@@ -157,6 +160,7 @@ class BookingUpdate(BookingBase):
 class BookingOut(BookingBase):
     id: int
     booking_number: str
+    group_reference: Optional[str] = ""
     budget_id: Optional[int] = None
     budget_number: Optional[str] = None
     seller_ids: List[int] = []

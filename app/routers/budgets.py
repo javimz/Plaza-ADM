@@ -233,13 +233,15 @@ def _convert_budget_to_booking_internal(cursor, budget_id: int, current_user: di
             UPDATE bookings
             SET client_id = ?, user_id = ?, title = ?, destination = ?, start_date = ?, end_date = ?,
                 currency = ?, status = 'Confirmada', total_cost = ?, total_amount = ?, paid_amount = ?, balance_due = ?,
-                notes = ?
+                notes = ?, group_reference = ?
             WHERE id = ?;
         """, (
             budget["client_id"], user_id, budget["title"], budget["destination"],
             budget["start_date"], budget["end_date"], budget["currency"],
             total_cost, total_amount, paid_amount, max(0.0, total_amount - paid_amount),
-            f"Reactivada desde el presupuesto {budget['budget_number']}", booking_id,
+            f"Reactivada desde el presupuesto {budget['budget_number']}",
+            budget["group_reference"] if "group_reference" in budget.keys() else "",
+            booking_id,
         ))
         cursor.execute("UPDATE budget_items SET booking_id = ? WHERE budget_id = ?;", (booking_id, budget_id))
         cursor.execute("UPDATE supplier_payables SET booking_id = ? WHERE budget_id = ?;", (booking_id, budget_id))
@@ -258,13 +260,14 @@ def _convert_budget_to_booking_internal(cursor, budget_id: int, current_user: di
     total_cost = float(budget["total_cost"] or 0)
 
     cursor.execute("""
-        INSERT INTO bookings (booking_number, budget_id, client_id, user_id, title, destination, start_date, end_date, currency, exchange_rate, status, total_cost, total_amount, paid_amount, balance_due, notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Confirmada', ?, ?, 0.0, ?, ?);
+        INSERT INTO bookings (booking_number, budget_id, client_id, user_id, title, destination, start_date, end_date, currency, exchange_rate, status, total_cost, total_amount, paid_amount, balance_due, notes, group_reference)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Confirmada', ?, ?, 0.0, ?, ?, ?);
     """, (
         booking_number, budget["id"], budget["client_id"], user_id,
         budget["title"], budget["destination"], budget["start_date"], budget["end_date"],
         budget["currency"], budget["exchange_rate"] or 1.0, total_cost, total_amount, total_amount,
-        f"Generado a partir del presupuesto {budget['budget_number']}"
+        f"Generado a partir del presupuesto {budget['budget_number']}",
+        budget["group_reference"] if "group_reference" in budget.keys() else ""
     ))
     booking_id = cursor.lastrowid
     cursor.execute("UPDATE budget_items SET booking_id = ? WHERE budget_id = ?;", (booking_id, budget_id))
@@ -293,13 +296,13 @@ def create_budget(payload: BudgetCreate, current_user: dict = Depends(get_curren
     total_amount = sum(item.sale_price * item.quantity for item in payload.items)
 
     cursor.execute("""
-        INSERT INTO budgets (budget_number, client_id, user_id, title, destination, start_date, end_date, currency, exchange_rate, status, total_cost, total_amount, notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+        INSERT INTO budgets (budget_number, client_id, user_id, title, destination, start_date, end_date, currency, exchange_rate, status, total_cost, total_amount, notes, group_reference)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
     """, (
         budget_number, primary_client_id, user_id, payload.title, payload.destination,
         payload.start_date or "", payload.end_date or "", payload.currency or "USD",
         payload.exchange_rate or 1.0, payload.status or "Borrador",
-        total_cost, total_amount, payload.notes or ""
+        total_cost, total_amount, payload.notes or "", payload.group_reference or ""
     ))
     budget_id = cursor.lastrowid
     set_seller_ids(cursor, "budget", budget_id, seller_ids)
@@ -342,12 +345,13 @@ def update_budget(budget_id: int, payload: BudgetCreate, current_user: dict = De
 
         cursor.execute("""
             UPDATE budgets 
-            SET client_id = ?, title = ?, destination = ?, start_date = ?, end_date = ?, currency = ?, exchange_rate = ?, status = ?, total_cost = ?, total_amount = ?, notes = ?
+            SET client_id = ?, title = ?, destination = ?, start_date = ?, end_date = ?, currency = ?, exchange_rate = ?, status = ?, total_cost = ?, total_amount = ?, notes = ?, group_reference = ?
             WHERE id = ?;
         """, (
             primary_client_id, payload.title, payload.destination, payload.start_date or "",
             payload.end_date or "", payload.currency or "USD", payload.exchange_rate or 1.0,
-            payload.status or "Borrador", total_cost, total_amount, payload.notes or "", budget_id
+            payload.status or "Borrador", total_cost, total_amount, payload.notes or "",
+            payload.group_reference or "", budget_id
         ))
 
         cursor.execute("DELETE FROM budget_items WHERE budget_id = ?;", (budget_id,))

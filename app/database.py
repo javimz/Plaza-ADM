@@ -82,6 +82,7 @@ def init_db():
         currency TEXT NOT NULL DEFAULT 'USD',
         exchange_rate REAL DEFAULT 1.0,
         status TEXT NOT NULL DEFAULT 'Borrador',
+        group_reference TEXT,
         total_cost REAL NOT NULL DEFAULT 0.0,
         total_amount REAL NOT NULL DEFAULT 0.0,
         notes TEXT,
@@ -125,6 +126,7 @@ def init_db():
         end_date TEXT,
         currency TEXT NOT NULL DEFAULT 'USD',
         status TEXT NOT NULL DEFAULT 'Confirmada',
+        group_reference TEXT,
         total_amount REAL NOT NULL DEFAULT 0.0,
         paid_amount REAL NOT NULL DEFAULT 0.0,
         balance_due REAL NOT NULL DEFAULT 0.0,
@@ -291,12 +293,19 @@ def init_db():
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_budget_items_booking_id ON budget_items(booking_id);")
             break
 
+    cursor.execute("PRAGMA table_info(budgets);")
+    budget_columns = {row["name"] for row in cursor.fetchall()}
+    if "group_reference" not in budget_columns:
+        cursor.execute("ALTER TABLE budgets ADD COLUMN group_reference TEXT;")
+
     cursor.execute("PRAGMA table_info(bookings);")
     booking_columns = {row["name"] for row in cursor.fetchall()}
     if "total_cost" not in booking_columns:
         cursor.execute("ALTER TABLE bookings ADD COLUMN total_cost REAL NOT NULL DEFAULT 0.0;")
     if "exchange_rate" not in booking_columns:
         cursor.execute("ALTER TABLE bookings ADD COLUMN exchange_rate REAL DEFAULT 1.0;")
+    if "group_reference" not in booking_columns:
+        cursor.execute("ALTER TABLE bookings ADD COLUMN group_reference TEXT;")
 
     # Link existing budget_items to bookings
     cursor.execute("""

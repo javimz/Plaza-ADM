@@ -1303,6 +1303,76 @@ class TestTravelAgencyApp(unittest.TestCase):
         self.assertEqual(budget_data["total_cost"], 440.0)
         self.assertEqual(budget_data["items"][0]["gs_adm"], 40.0)
 
+    def test_26_booking_and_budget_group_reference(self):
+        # 1. Create a booking with multiple clients and group_reference
+        booking_payload = {
+            "client_ids": [1, 2],
+            "title": "Salida Grupal Europa",
+            "destination": "Madrid",
+            "group_reference": "Amigos Mendoza",
+            "items": [
+                {
+                    "service_type": "Vuelo",
+                    "description": "Vuelo grupal",
+                    "cost_price": 500.0,
+                    "sale_price": 600.0,
+                    "quantity": 1
+                }
+            ]
+        }
+        res = self.client.post("/api/bookings", json=booking_payload)
+        self.assertEqual(res.status_code, 200, res.text)
+        b_data = res.json()
+        b_id = b_data["id"]
+        self.assertEqual(b_data["group_reference"], "Amigos Mendoza")
+
+        # 2. Get booking by id
+        get_res = self.client.get(f"/api/bookings/{b_id}")
+        self.assertEqual(get_res.status_code, 200)
+        self.assertEqual(get_res.json()["group_reference"], "Amigos Mendoza")
+
+        # 3. List bookings
+        list_res = self.client.get("/api/bookings")
+        self.assertEqual(list_res.status_code, 200)
+        matched = next((b for b in list_res.json() if b["id"] == b_id), None)
+        self.assertIsNotNone(matched)
+        self.assertEqual(matched["group_reference"], "Amigos Mendoza")
+
+        # 4. Update group_reference
+        booking_payload["group_reference"] = "Familia González"
+        put_res = self.client.put(f"/api/bookings/{b_id}", json=booking_payload)
+        self.assertEqual(put_res.status_code, 200)
+        self.assertEqual(put_res.json()["group_reference"], "Familia González")
+
+        # 5. Budget with group_reference and convert
+        budget_payload = {
+            "client_ids": [1, 2],
+            "title": "Presupuesto Grupo",
+            "destination": "Roma",
+            "group_reference": "Quinceañeras 2026",
+            "items": [
+                {
+                    "service_type": "Tour",
+                    "description": "Tour Roma",
+                    "cost_price": 200.0,
+                    "sale_price": 250.0,
+                    "quantity": 1
+                }
+            ]
+        }
+        bg_res = self.client.post("/api/budgets", json=budget_payload)
+        self.assertEqual(bg_res.status_code, 200)
+        bg_data = bg_res.json()
+        bg_id = bg_data["id"]
+        self.assertEqual(bg_data["group_reference"], "Quinceañeras 2026")
+
+        conv_res = self.client.post(f"/api/budgets/{bg_id}/convert-to-booking")
+        self.assertEqual(conv_res.status_code, 200)
+        new_b_id = conv_res.json()["booking_id"]
+        new_b_get = self.client.get(f"/api/bookings/{new_b_id}")
+        self.assertEqual(new_b_get.status_code, 200)
+        self.assertEqual(new_b_get.json()["group_reference"], "Quinceañeras 2026")
+
 if __name__ == "__main__":
     unittest.main()
 

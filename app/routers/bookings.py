@@ -323,13 +323,13 @@ def create_booking(payload: BookingCreate, current_user: dict = Depends(get_curr
             INSERT INTO bookings (
                 booking_number, budget_id, client_id, user_id, title, destination,
                 start_date, end_date, currency, exchange_rate, status, total_cost,
-                total_amount, paid_amount, balance_due, notes
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0.0, ?, ?);
+                total_amount, paid_amount, balance_due, notes, group_reference
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0.0, ?, ?, ?);
         """, (
             booking_number, payload.budget_id, primary_client_id, user_id,
             payload.title, payload.destination, payload.start_date or "", payload.end_date or "",
             payload.currency or "USD", payload.exchange_rate or 1.0, payload.status or "Presupuesto",
-            total_cost, total_amount, total_amount, payload.notes or ""
+            total_cost, total_amount, total_amount, payload.notes or "", payload.group_reference or ""
         ))
         booking_id = cursor.lastrowid
         set_seller_ids(cursor, "booking", booking_id, seller_ids)
@@ -377,13 +377,14 @@ def update_booking(booking_id: int, payload: BookingUpdate, current_user: dict =
             UPDATE bookings
             SET client_id = ?, title = ?, destination = ?, start_date = ?, end_date = ?,
                 currency = ?, exchange_rate = ?, status = ?, total_cost = ?,
-                total_amount = ?, balance_due = ?, notes = ?
+                total_amount = ?, balance_due = ?, notes = ?, group_reference = ?
             WHERE id = ?;
         """, (
             primary_client_id, payload.title, payload.destination, payload.start_date or "",
             payload.end_date or "", payload.currency or "USD", payload.exchange_rate or 1.0,
             payload.status or existing["status"], total_cost, total_amount, balance_due,
-            payload.notes or "", booking_id
+            payload.notes or "", payload.group_reference if payload.group_reference is not None else existing["group_reference"],
+            booking_id
         ))
 
         set_client_ids(cursor, "booking", booking_id, client_ids)
