@@ -1796,13 +1796,17 @@ function renderBookingsTable() {
         const sellers = (b.seller_names || []).join(', ');
         const dates = (b.start_date || b.end_date) ? `${b.start_date || 'TBD'} al ${b.end_date || 'TBD'}` : '-';
 
+        const clientCount = (b.client_names && b.client_names.length) || (b.client_ids && b.client_ids.length) || (b.client_name && b.client_name.includes(',') ? b.client_name.split(',').length : 0);
+        const isGroup = clientCount > 1 || (b.client_name && b.client_name.includes(','));
+        const clientText = isGroup ? 'Salida Grupal' : (b.client_name || 'N/A');
+
         return `
-            <tr class="border-b border-slate-100 hover:bg-slate-50 transition">
+            <tr class="border-b border-slate-100 hover:bg-slate-50 transition" data-search-keywords="${escapeProfitText(b.client_name || '')}">
                 <td class="p-4 font-bold text-blue-600">
                     ${b.booking_number}
                     ${sellers ? `<span class="block text-xs font-normal text-slate-500">${escapeProfitText(sellers)}</span>` : ''}
                 </td>
-                <td class="p-4 font-medium text-slate-800">${escapeProfitText(b.client_name || 'N/A')}</td>
+                <td class="p-4 font-medium text-slate-800" title="${escapeProfitText(b.client_name || '')}">${escapeProfitText(clientText)}</td>
                 <td class="p-4 font-semibold text-slate-800">
                     ${escapeProfitText(b.title || '')}
                     <span class="block text-xs font-normal text-slate-500">${escapeProfitText(b.destination || '')}</span>
@@ -3786,7 +3790,8 @@ function filterSectionRows(sectionId, query) {
 
         let visibleCount = 0;
         dataRows.forEach(row => {
-            const matches = !normalizedQuery || row.innerText.toLocaleLowerCase('es').includes(normalizedQuery);
+            const keywords = (row.getAttribute('data-search-keywords') || '').toLocaleLowerCase('es');
+            const matches = !normalizedQuery || row.innerText.toLocaleLowerCase('es').includes(normalizedQuery) || keywords.includes(normalizedQuery);
             if (isPaginated) {
                 row.dataset.matchesFilter = matches ? 'true' : 'false';
             } else {
